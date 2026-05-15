@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ProductCategory {
+  READY_PC
+  COMPONENT
+}
+
+enum ComponentCategory {
+  CPU
+  GPU
+  RAM
+  STORAGE
+  MOTHERBOARD
+  PSU
+  CASE
+  COOLING
+  FAN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model User {
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  password                String
+  name                    String
+  avatar                  String?
+  role                    Role      @default(USER)
+  emailVerified           Boolean   @default(false)
+  verificationToken       String?
+  verificationTokenExpiry DateTime?
+  createdAt               DateTime  @default(now())
+
+  cartItems     CartItem[]
+  wishlistItems Wishlist[]
+  orders        Order[]
+  customBuilds  CustomBuild[]
+  reviews       Review[]
+
+  @@map("users")
+}
+
+model Product {
+  id           String          @id @default(cuid())
+  name         String
+  description  String
+  price        Float
+  images       String[]
+  category     ProductCategory
+  stock        Int             @default(0)
+  specs        Json            @default("{}")
+  featured          Boolean         @default(false)
+  heroFeatured      Boolean         @default(false)
+  performanceScore  Int             @default(5)
+  createdAt         DateTime        @default(now())
+
+  cartItems         CartItem[]
+  wishlistItems     Wishlist[]
+  productComponents ProductComponent[]
+  reviews           Review[]
+
+  @@map("products")
+}
+
+model Component {
+  id           String            @id @default(cuid())
+  name         String
+  category     ComponentCategory
+  brand        String?
+  manufacturer String?
+  model        String?
+  color        String?
+  imageUrl     String?
+  price        Float
+  specs        Json              @default("{}")
+  specData     Json?
+  stock        Int               @default(0)
+  images       String[]
+  description  String?
+
+  productComponents ProductComponent[]
+
+  @@map("components")
+}
+
+model ProductComponent {
+  id          String @id @default(cuid())
+  productId   String
+  componentId String
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  component Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, componentId])
+  @@map("product_components")
+}
+
+model CartItem {
+  id        String @id @default(cuid())
+  userId    String
+  productId String
+  quantity  Int    @default(1)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("cart_items")
+}
+
+model Wishlist {
+  id        String @id @default(cuid())
+  userId    String
+  productId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("wishlist")
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String
+  status          OrderStatus @default(PENDING)
+  totalPrice      Float
+  items           Json
+  address         Json
+  paymentStatus   String      @default("PENDING")
+  paymentMethod   String?
+  paymentIntentId String?
+  createdAt       DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("orders")
+}
+
+model CustomBuild {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String   @default("")
+  components Json
+  totalPrice Float    @default(0)
+  aiContext  Json     @default("{}")
+  status     String   @default("draft")
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("custom_builds")
+}
+
+model PromoCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  discount  Float
+  maxUses   Int       @default(100)
+  usedCount Int       @default(0)
+  expiresAt DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  @@map("promo_codes")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  rating    Int
+  title     String
+  comment   String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("reviews")
+}
