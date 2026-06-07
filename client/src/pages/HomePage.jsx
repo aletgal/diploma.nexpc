@@ -10,39 +10,91 @@ import api from '../api/client'
 const TEMPLATES = [
   {
     id: 'budget-gaming',
+    templateKey: 'budget_gaming',
     name: 'Budget Gaming',
     price: 300000,
     icon: Gamepad2,
     gradient: 'from-blue-500 to-blue-700',
-    specs: ['Intel Core i5 + GTX 1660 Super', '16GB DDR4 RAM', '512GB NVMe SSD'],
-    aiContext: { useCase: 'Gaming', tasks: ['CS2', 'Valorant', 'Fortnite'], resolution: '1080p High', preferences: 'Budget-focused build for competitive gaming' },
+    specs: ['Intel Core i5 + GTX 1660 Ti', '16GB DDR4 RAM', '512GB NVMe SSD'],
+    purpose: 'gaming',
+    budget: { max: 350000 },
+    components: [
+      { slot: 'CPU', name: 'Intel Core i5-12400F' },
+      { slot: 'MOTHERBOARD', name: 'ASRock H610M-H2/M.2' },
+      { slot: 'GPU', name: 'ZOTAC GeForce GTX 1660 Ti AMP Edition' },
+      { slot: 'RAM', name: 'ADATA XPG GAMMIX D35', count: 2 },
+      { slot: 'STORAGE', name: 'DEXP R100' },
+      { slot: 'PSU', name: 'ZALMAN MegaMax (TXll) 600W' },
+      { slot: 'CASE', name: 'ARDOR GAMING Rare NX30 Lite' },
+      { slot: 'COOLING', name: 'DEXP DPC-D2200H' },
+      { slot: 'FAN', name: 'ARDOR GAMING Reflect YF120', count: 1 },
+    ],
   },
   {
     id: 'stream-setup',
+    templateKey: 'stream_setup',
     name: 'Stream Setup',
     price: 500000,
     icon: Radio,
     gradient: 'from-purple-500 to-purple-700',
-    specs: ['Intel Core i7 + RTX 3060 Ti', '32GB DDR4 RAM', '1TB NVMe SSD'],
-    aiContext: { useCase: 'Gaming & Streaming', tasks: ['Streaming', 'Gaming', 'Content creation'], resolution: '1080p Ultra', preferences: 'Balanced build for gaming and live streaming simultaneously' },
+    specs: ['Intel Core i7 + RTX 3060', '32GB DDR4 RAM', '1TB NVMe SSD'],
+    purpose: 'streaming',
+    budget: { max: 650000 },
+    components: [
+      { slot: 'CPU', name: 'Intel Core i7-13700K' },
+      { slot: 'MOTHERBOARD', name: 'ASRock H610M-H2/M.2' },
+      { slot: 'GPU', name: 'Gigabyte Windforce GeForce RTX 3060' },
+      { slot: 'RAM', name: 'ADATA XPG GAMMIX D35', count: 2, capacity: '32GB' },
+      { slot: 'STORAGE', name: 'ADATA XPG SPECTRIX S20G' },
+      { slot: 'PSU', name: 'DEEPCOOL PF750' },
+      { slot: 'CASE', name: 'ARDOR GAMING Rare NX30 Lite' },
+      { slot: 'COOLING', name: 'DEEPCOOL AK620' },
+      { slot: 'FAN', name: 'ARDOR GAMING Reflect YF120', count: 1 },
+    ],
   },
   {
     id: '3d-rendering',
+    templateKey: 'rendering_3d',
     name: '3D Rendering',
     price: 800000,
     icon: Box,
     gradient: 'from-orange-500 to-orange-700',
-    specs: ['AMD Ryzen 9 + RTX 3080', '64GB DDR5 RAM', '2TB NVMe SSD'],
-    aiContext: { useCase: 'Creative work', tasks: ['3D rendering', 'Video editing', 'CGI'], resolution: '4K', preferences: 'High-core-count CPU and VRAM-heavy GPU for professional 3D rendering' },
+    specs: ['AMD Ryzen 9 + RTX 3060', '64GB DDR5 RAM', '2TB NVMe SSD'],
+    purpose: '3d_rendering',
+    budget: { max: 1200000 },
+    components: [
+      { slot: 'CPU', name: 'AMD Ryzen 9 7900X' },
+      { slot: 'MOTHERBOARD', name: 'MSI MPG B850 EDGE TI WIFI' },
+      { slot: 'GPU', name: 'ASUS Dual GeForce RTX 3060' },
+      { slot: 'RAM', name: 'ADATA XPG Lancer Blade', count: 4 },
+      { slot: 'STORAGE', name: 'ADATA LEGEND 860' },
+      { slot: 'PSU', name: 'ADATA XPG CORE REACTOR II VE 850W' },
+      { slot: 'CASE', name: 'ARDOR GAMING Rare M2' },
+      { slot: 'COOLING', name: 'ARDOR GAMING Frostwave 360 SC V2' },
+      { slot: 'FAN', name: 'ID-COOLING TF Series', count: 4 },
+    ],
   },
   {
     id: 'no-limits',
+    templateKey: 'no_limits',
     name: 'No Limits',
     price: 1500000,
     icon: Zap,
     gradient: 'from-gray-800 to-gray-900',
     specs: ['Intel Core i9 + RTX 4090', '128GB DDR5 RAM', '4TB NVMe SSD'],
-    aiContext: { useCase: 'Enthusiast', tasks: ['4K Gaming', 'AI workloads', 'Extreme gaming'], resolution: '4K Ultra', preferences: 'No-compromise enthusiast build with top-of-the-line components' },
+    purpose: 'gaming',
+    budget: { max: null },
+    components: [
+      { slot: 'CPU', name: 'Intel Core i9-14900KS' },
+      { slot: 'MOTHERBOARD', name: 'ASUS TUF GAMING Z790-BTF WIFI' },
+      { slot: 'GPU', name: 'ASUS ROG Strix GeForce RTX 4090' },
+      { slot: 'RAM', name: 'Apacer NOX RGB', count: 4 },
+      { slot: 'STORAGE', name: 'ADATA XPG MARS 980 STORM' },
+      { slot: 'PSU', name: 'Cougar POLAR 1200' },
+      { slot: 'CASE', name: 'LIAN LI O11 Dynamic EVO' },
+      { slot: 'COOLING', name: 'ASUS ROG STRIX LC II 240 ARGB' },
+      { slot: 'FAN', name: 'LIAN LI UNI FAN SL-INFINITY REVERSE BLADE', count: 4 },
+    ],
   },
 ]
 
@@ -51,15 +103,33 @@ function BuildLikeAProSection() {
   const [loadingId, setLoadingId] = useState(null)
 
   async function loadTemplate(template) {
-    const templateType = template.id.replace(/-/g, '_')
     setLoadingId(template.id)
     try {
-      const res = await api.post('/ai/build-template', { templateType })
-      const data = res.data
+      const currentBuild = []
+      for (const comp of template.components) {
+        const res = await api.get(`/components?search=${encodeURIComponent(comp.name)}&limit=1`)
+        const found = res.data.components?.[0]
+        if (!found) continue
+        if (comp.slot === 'RAM' && comp.count) {
+          for (let i = 0; i < comp.count; i++) {
+            currentBuild.push({ slot: 'RAM', component: found })
+          }
+        } else if (comp.slot === 'FAN') {
+          currentBuild.push({ slot: 'FAN', component: found, packSize: comp.count || 1 })
+        } else {
+          currentBuild.push({ slot: comp.slot, component: found })
+        }
+      }
       localStorage.setItem('nexpc_build_template', JSON.stringify({
-        components: data.components,
-        aiContext: data.aiContext,
-        templateName: data.templateName,
+        build: currentBuild,
+        templateName: template.name,
+        templateType: template.templateKey,
+        aiContext: {
+          purpose: template.purpose,
+          budget: template.budget,
+          isTemplate: true,
+          templateType: template.templateKey,
+        },
       }))
       navigate('/build')
     } catch {

@@ -9,7 +9,7 @@ import Pagination from '../components/ui/Pagination'
 import EmptyState from '../components/ui/EmptyState'
 import { formatStorageSize } from '../utils/formatters'
 
-const PRICE_MAX = 20_000_000
+const PRICE_MAX = 5_000_000
 const PRICE_STEP = 1_000
 
 const SORT_OPTIONS = [
@@ -482,7 +482,7 @@ export default function ComponentsPage() {
         />
         <div className="flex justify-between mt-2 mb-3">
           <span className="text-xs text-gray-400">0 ₸</span>
-          <span className="text-xs text-gray-400">2 000 000 ₸</span>
+          <span className="text-xs text-gray-400">5 000 000 ₸</span>
         </div>
         <button onClick={() => commitPriceRange(sliderMin, sliderMax)} className="w-full btn-primary text-xs py-1.5">
           Apply

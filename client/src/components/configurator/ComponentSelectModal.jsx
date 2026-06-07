@@ -51,7 +51,7 @@ function getCompatibilityIssue(component, build) {
       return `Needs ${mbSocket} socket (this has ${sd.socket})`
   }
   if (cat === 'RAM' && MOTHERBOARD) {
-    const expected = inferDDRType(MOTHERBOARD.specData?.chipset)
+    const expected = MOTHERBOARD.specData?.supportedRamType
     if (expected && sd.memoryType && sd.memoryType !== expected)
       return `Motherboard supports ${expected}, this is ${sd.memoryType}`
   }

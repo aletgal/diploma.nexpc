@@ -8,7 +8,7 @@ import api from '../../api/client'
 const SLOTS = [
   { key: 'CPU',         label: 'CPU',          icon: Cpu,          required: true  },
   { key: 'MOTHERBOARD', label: 'Motherboard',  icon: CircuitBoard, required: true  },
-  { key: 'GPU',         label: 'GPU',          icon: Monitor,      required: false },
+  { key: 'GPU',         label: 'GPU (Optional)', icon: Monitor },
   { key: 'RAM',         label: 'RAM',          icon: MemoryStick,  required: true,  requires: 'MOTHERBOARD' },
   { key: 'STORAGE',     label: 'Storage',      icon: HardDrive,    required: true  },
   { key: 'PSU',         label: 'PSU',          icon: Zap,          required: true  },
@@ -73,7 +73,7 @@ function getBuildConflicts(build) {
       conflicts.push(`CPU (${CPU.specData.socket}) incompatible with motherboard (${MOTHERBOARD.specData.socket})`)
   }
   if (RAM && MOTHERBOARD) {
-    const exp = inferDDR(MOTHERBOARD.specData?.chipset)
+    const exp = MOTHERBOARD.specData?.supportedRamType
     if (exp && RAM.specData?.memoryType && RAM.specData.memoryType !== exp)
       conflicts.push(`RAM is ${RAM.specData.memoryType} but motherboard supports ${exp}`)
   }
@@ -113,6 +113,12 @@ function getShortSpec(component) {
     case 'FAN':         return [sd.dimensions && addSpecSuffix('FAN', 'dimensions', sd.dimensions), sd.rgb && 'RGB'].filter(Boolean).join(' · ')
     default:            return ''
   }
+}
+
+function getMaxStorageSlots(motherboard) {
+  const m2 = Number(motherboard?.specData?.m2Slots)
+  const sata = Number(motherboard?.specData?.sataSlots)
+  return (Number.isFinite(m2) ? m2 : 2) + (Number.isFinite(sata) ? sata : 4)
 }
 
 function getMaxFans(caseComp) {
@@ -426,6 +432,92 @@ function FanPacksCard({ caseComp, fanPacks, maxFans, aiContext, cpuTdp, buildTot
   )
 }
 
+function StorageSlotsCard({ storageItems, maxStorageSlots, onAdd, onRemove }) {
+  const colors = CATEGORY_COLORS.STORAGE
+  const installed = storageItems.length
+  const canAddMore = installed < maxStorageSlots
+  const hasItems = installed > 0
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', borderLeft: hasItems ? `4px solid ${colors.border}` : '1px solid #e5e7eb', marginBottom: 10, padding: '14px 16px' }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <HardDrive style={{ width: 19, height: 19, color: colors.icon }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: 0 }}>Storage</p>
+          <p style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 0' }}>Up to {maxStorageSlots} drives</p>
+          {!hasItems && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Required</span>
+          )}
+        </div>
+        {canAddMore ? (
+          <button
+            onClick={onAdd}
+            style={{ padding: '8px 18px', borderRadius: 9, border: `1.5px solid ${colors.border}`, background: '#fff', color: colors.icon, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, transition: 'background 0.12s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = colors.bg }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+          >
+            <Plus style={{ width: 14, height: 14 }} /> Add Storage
+          </button>
+        ) : (
+          <button
+            disabled
+            style={{ padding: '8px 18px', borderRadius: 9, border: '1.5px solid #e5e7eb', background: '#fff', color: '#9ca3af', fontSize: 13, fontWeight: 600, cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, opacity: 0.5 }}
+          >
+            <Plus style={{ width: 14, height: 14 }} /> Add Storage
+          </button>
+        )}
+      </div>
+
+      {/* Slot dots + status */}
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          {Array.from({ length: maxStorageSlots }).map((_, i) => (
+            <div
+              key={i}
+              style={{ width: 18, height: 18, borderRadius: '50%', background: i < installed ? colors.border : '#e5e7eb', transition: 'background 0.2s', flexShrink: 0 }}
+            />
+          ))}
+          <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 4 }}>
+            {installed}/{maxStorageSlots} slots used
+          </span>
+        </div>
+
+        {hasItems ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {storageItems.map((item, idx) => {
+              const imageUrl = item.component.imageUrl || item.component.images?.[0]
+              return (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
+                  {imageUrl && (
+                    <img src={imageUrl} alt={item.component.name} style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 4, background: '#fff', flexShrink: 0 }} />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.component.name}</p>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: '2px 0 0' }}>{formatPrice(item.component.price)}</p>
+                  </div>
+                  <button
+                    onClick={() => onRemove(idx)}
+                    style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #fecaca', background: '#fff7f7', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#fee2e2' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff7f7' }}
+                  >
+                    <Trash2 style={{ width: 12, height: 12 }} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>No storage added yet — click "Add Storage" to get started</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function CoolingHint({ cpuTdp, cooler }) {
   if (!cpuTdp) return null
   if (!cooler) {
@@ -580,13 +672,20 @@ function SlotCard({ slot, component, dependencyMet, confirmingRemove, onAdd, onR
 
 export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelectSlot, onRestart }) {
   const [build, setBuild] = useState(() => {
-    const empty = { CPU: null, MOTHERBOARD: null, GPU: null, STORAGE: null, PSU: null, CASE: null, COOLING: null }
+    const empty = { CPU: null, MOTHERBOARD: null, GPU: null, PSU: null, CASE: null, COOLING: null }
     if (!initialBuild) return empty
     const loaded = {}
     for (const key of Object.keys(empty)) {
       loaded[key] = initialBuild[key] || null
     }
     return loaded
+  })
+
+  const [storageItems, setStorageItems] = useState(() => {
+    if (!initialBuild?.STORAGE) return []
+    const st = initialBuild.STORAGE
+    if (Array.isArray(st)) return st
+    return [{ component: st }]
   })
 
   const [ramKits, setRamKits] = useState(() => {
@@ -606,6 +705,7 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
   const [activeModal, setActiveModal] = useState(null)
   const [highlightId, setHighlightId] = useState(null)
   const [confirmRemove, setConfirmRemove] = useState(null)
+  const [gpuSkipped, setGpuSkipped] = useState(false)
 
   useEffect(() => {
     if (preSelectSlot?.category) {
@@ -615,6 +715,7 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
   }, []) // eslint-disable-line
 
   const maxFans = getMaxFans(build.CASE)
+  const maxStorageSlots = getMaxStorageSlots(build.MOTHERBOARD)
   const ramSlotsDefined = build.MOTHERBOARD?.specData?.ramSlots || 4
   const filledRamSlots = Math.min(ramSlotsDefined, ramKits.reduce((s, k) => s + k.sticksUsed, 0))
   const totalRamGB = ramKits.reduce((s, k) => s + (parseNum(k.component.specData?.memorySize) || 0), 0)
@@ -623,10 +724,14 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
   const gpuWatts = build.GPU ? 300 : 0
   const minPsuWattage = cpuTdp + gpuWatts + 150
 
+  const cpuIgpu = build.CPU?.specData?.integratedGraphics
+  const cpuHasIgpu = !!cpuIgpu && cpuIgpu !== 'No'
+
   const buildTotal =
     Object.values(build).reduce((s, c) => s + (c?.price || 0), 0) +
     ramKits.reduce((s, k) => s + k.component.price, 0) +
-    fanPacks.reduce((s, p) => s + p.component.price, 0)
+    fanPacks.reduce((s, p) => s + p.component.price, 0) +
+    storageItems.reduce((s, it) => s + it.component.price, 0)
 
   const budgetMax = aiContext?.budget?.max || 0
   const budgetRemaining = budgetMax > 0 ? budgetMax - buildTotal : null
@@ -634,13 +739,15 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
   const filledCount =
     Object.values(build).filter(Boolean).length +
     (ramKits.length > 0 ? 1 : 0) +
-    (fanPacks.length > 0 ? 1 : 0)
+    (fanPacks.length > 0 ? 1 : 0) +
+    (storageItems.length > 0 ? 1 : 0)
   const emptySlots = Math.max(1, 9 - filledCount)
 
   const buildForChecks = {
     ...build,
     RAM: ramKits[0]?.component || null,
     FAN: fanPacks[0]?.component || null,
+    STORAGE: storageItems[0]?.component || null,
   }
 
   const conflicts = getBuildConflicts(buildForChecks)
@@ -648,6 +755,7 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
   function slotFilled(key) {
     if (key === 'RAM') return ramKits.length > 0
     if (key === 'FAN') return fanPacks.length > 0
+    if (key === 'STORAGE') return storageItems.length > 0
     return !!build[key]
   }
 
@@ -659,11 +767,14 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
     caseFormFactor: build.CASE?.specData?.formFactor || null,
     caseName: build.CASE?.name || null,
     formFactor: build.CASE?.specData?.formFactor || null,
-    ddrType: build.MOTHERBOARD?.specData?.chipset
-      ? (DDR5_CHIPSETS.some((c) => build.MOTHERBOARD.specData.chipset.toUpperCase().includes(c)) ? 'DDR5' : 'DDR4')
-      : null,
+    ddrType: build.MOTHERBOARD?.specData?.supportedRamType
+      || (build.MOTHERBOARD?.specData?.chipset
+        ? (DDR5_CHIPSETS.some((c) => build.MOTHERBOARD.specData.chipset.toUpperCase().includes(c)) ? 'DDR5' : 'DDR4')
+        : null),
     budgetRemaining,
     maxFans,
+    maxStorageSlots,
+    installedStorage: storageItems.length,
     installedFans,
     spentBudget: buildTotal,
     remainingBudget: budgetRemaining,
@@ -684,7 +795,19 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
     } else if (category === 'FAN') {
       const count = parseFanPackCount(component.name)
       setFanPacks((packs) => [...packs, { component, count }])
+    } else if (category === 'STORAGE') {
+      setStorageItems((items) => [...items, { component }])
     } else {
+      if (category === 'MOTHERBOARD') {
+        setRamKits([])
+        const newMax = getMaxStorageSlots(component)
+        setStorageItems((items) => items.slice(0, newMax))
+      }
+      if (category === 'CPU') {
+        const ig = component.specData?.integratedGraphics
+        if (!ig || ig === 'No') setGpuSkipped(false)
+      }
+      if (category === 'GPU') setGpuSkipped(false)
       setBuild((b) => ({ ...b, [category]: component }))
     }
     setActiveModal(null)
@@ -705,6 +828,7 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
     setBuild((b) => ({ ...b, [key]: null }))
     if (key === 'MOTHERBOARD') setRamKits([])
     if (key === 'CASE') setFanPacks([])
+    if (key === 'CPU') setGpuSkipped(false)
     setConfirmRemove(null)
   }
 
@@ -765,7 +889,7 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
             ))}
           </div>
 
-          {/* Slots — RAM and FAN rendered with custom cards */}
+          {/* Slots — RAM, STORAGE and FAN rendered with custom cards */}
           {SLOTS.filter((s) => s.key !== 'FAN').map((slot) => {
             if (slot.key === 'RAM') {
               return (
@@ -779,6 +903,70 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
                   aiContext={aiContext}
                   budgetRemaining={budgetRemaining}
                 />
+              )
+            }
+            if (slot.key === 'STORAGE') {
+              return (
+                <StorageSlotsCard
+                  key="STORAGE"
+                  storageItems={storageItems}
+                  maxStorageSlots={maxStorageSlots}
+                  onAdd={() => setActiveModal('STORAGE')}
+                  onRemove={(idx) => setStorageItems((s) => s.filter((_, i) => i !== idx))}
+                />
+              )
+            }
+            if (slot.key === 'GPU') {
+              if (gpuSkipped && !build.GPU) {
+                return (
+                  <div key="GPU" style={{ background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', marginBottom: 10, padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Monitor style={{ width: 19, height: 19, color: '#9ca3af' }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <p style={{ fontSize: 14, fontWeight: 600, color: '#9ca3af', margin: 0 }}>GPU (Optional)</p>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', background: '#e5e7eb', padding: '2px 8px', borderRadius: 9999, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Skipped</span>
+                        </div>
+                        <p style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 0' }}>Using integrated graphics</p>
+                      </div>
+                      <button
+                        onClick={() => setGpuSkipped(false)}
+                        style={{ padding: '8px 18px', borderRadius: 9, border: '1.5px solid #cbd5e1', background: '#fff', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, transition: 'background 0.12s' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+                      >
+                        <Plus style={{ width: 14, height: 14 }} /> Add GPU
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
+              return (
+                <Fragment key="GPU">
+                  <SlotCard
+                    slot={slot}
+                    component={build.GPU}
+                    dependencyMet={true}
+                    confirmingRemove={confirmRemove === 'GPU'}
+                    onAdd={() => openSlot(slot)}
+                    onRemoveRequest={() => setConfirmRemove('GPU')}
+                    onConfirmRemove={() => removeComponent('GPU')}
+                    onCancelRemove={() => setConfirmRemove(null)}
+                  />
+                  {cpuHasIgpu && !build.GPU && (
+                    <div style={{ margin: '-4px 0 10px', padding: '8px 12px', background: '#eff6ff', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <span style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 500 }}>Your CPU has integrated graphics — GPU is optional</span>
+                      <button
+                        onClick={() => setGpuSkipped(true)}
+                        style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 12, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        Skip GPU →
+                      </button>
+                    </div>
+                  )}
+                </Fragment>
               )
             }
             return (
@@ -816,6 +1004,7 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
           build={build}
           ramKits={ramKits}
           fanPacks={fanPacks}
+          storageItems={storageItems}
           slots={SLOTS}
           conflicts={conflicts}
           aiContext={aiContext}

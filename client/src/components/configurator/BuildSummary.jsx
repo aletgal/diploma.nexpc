@@ -6,7 +6,7 @@ import { aiApi } from '../../api/ai'
 import { useAuth } from '../../context/AuthContext'
 import { useState, useEffect, useRef } from 'react'
 
-const REQUIRED_SLOTS = ['CPU', 'MOTHERBOARD', 'STORAGE', 'PSU', 'CASE', 'COOLING']
+const REQUIRED_SLOTS = ['CPU', 'MOTHERBOARD', 'PSU', 'CASE', 'COOLING']
 
 const SLOT_ICONS = {
   CPU: Cpu, GPU: Monitor, RAM: MemoryStick, STORAGE: HardDrive,
@@ -18,7 +18,7 @@ function parseNum(str) {
   return m ? parseFloat(m[1]) : null
 }
 
-export default function BuildSummary({ build, ramKits = [], fanPacks = [], slots, conflicts, aiContext, onRestart }) {
+export default function BuildSummary({ build, ramKits = [], fanPacks = [], storageItems = [], slots, conflicts, aiContext, onRestart }) {
   const { isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const [saving, setSaving] = useState(false)
@@ -77,18 +77,21 @@ export default function BuildSummary({ build, ramKits = [], fanPacks = [], slots
   const filledCount =
     Object.values(build).filter(Boolean).length +
     (ramKits.length > 0 ? 1 : 0) +
-    (fanPacks.length > 0 ? 1 : 0)
+    (fanPacks.length > 0 ? 1 : 0) +
+    (storageItems.length > 0 ? 1 : 0)
 
   const total =
     Object.values(build).reduce((s, c) => s + (c?.price || 0), 0) +
     ramKits.reduce((s, k) => s + k.component.price, 0) +
-    fanPacks.reduce((s, p) => s + p.component.price, 0)
+    fanPacks.reduce((s, p) => s + p.component.price, 0) +
+    storageItems.reduce((s, it) => s + it.component.price, 0)
 
-  const allRequired = REQUIRED_SLOTS.every((k) => build[k]) && ramKits.length > 0
+  const allRequired = REQUIRED_SLOTS.every((k) => build[k]) && ramKits.length > 0 && storageItems.length > 0
 
   function slotFilled(key) {
     if (key === 'RAM') return ramKits.length > 0
     if (key === 'FAN') return fanPacks.length > 0
+    if (key === 'STORAGE') return storageItems.length > 0
     return !!build[key]
   }
 
@@ -104,6 +107,9 @@ export default function BuildSummary({ build, ramKits = [], fanPacks = [], slots
       }
       if (ramKits.length > 0) {
         components.RAM = ramKits.map((k) => ({ id: k.component.id, name: k.component.name, price: k.component.price, sticksUsed: k.sticksUsed }))
+      }
+      if (storageItems.length > 0) {
+        components.STORAGE = storageItems.map((it) => ({ id: it.component.id, name: it.component.name, price: it.component.price }))
       }
       if (fanPacks.length > 0) {
         components.FAN = fanPacks.map((p) => ({ id: p.component.id, name: p.component.name, price: p.component.price, count: p.count }))
@@ -126,6 +132,9 @@ export default function BuildSummary({ build, ramKits = [], fanPacks = [], slots
     }
     if (ramKits.length > 0) {
       components.RAM = ramKits.map((k) => ({ id: k.component.id, name: k.component.name, price: k.component.price, sticksUsed: k.sticksUsed, imageUrl: k.component.imageUrl || k.component.images?.[0] || null }))
+    }
+    if (storageItems.length > 0) {
+      components.STORAGE = storageItems.map((it) => ({ id: it.component.id, name: it.component.name, price: it.component.price, imageUrl: it.component.imageUrl || it.component.images?.[0] || null }))
     }
     if (fanPacks.length > 0) {
       components.FAN = fanPacks.map((p) => ({ id: p.component.id, name: p.component.name, price: p.component.price, count: p.count, imageUrl: p.component.imageUrl || p.component.images?.[0] || null }))
@@ -184,6 +193,34 @@ export default function BuildSummary({ build, ramKits = [], fanPacks = [], slots
                     </span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', flexShrink: 0 }}>
                       {formatPrice(kit.component.price)}
+                    </span>
+                  </div>
+                )
+              })
+            }
+
+            if (slot.key === 'STORAGE') {
+              if (storageItems.length === 0) {
+                return (
+                  <div key="STORAGE" style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 36 }}>
+                    <Icon style={{ width: 14, height: 14, color: '#d1d5db', flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 12, color: '#d1d5db' }}>— Storage</span>
+                  </div>
+                )
+              }
+              return storageItems.map((item, idx) => {
+                const imageUrl = item.component.imageUrl || item.component.images?.[0]
+                return (
+                  <div key={`STORAGE-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 36 }}>
+                    <Icon style={{ width: 14, height: 14, color: '#6b7280', flexShrink: 0 }} />
+                    {imageUrl && (
+                      <img src={imageUrl} alt={item.component.name} style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 6, background: '#f8fafc', flexShrink: 0 }} />
+                    )}
+                    <span style={{ flex: 1, fontSize: 12, color: '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.component.name}
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', flexShrink: 0 }}>
+                      {formatPrice(item.component.price)}
                     </span>
                   </div>
                 )
@@ -470,6 +507,21 @@ export default function BuildSummary({ build, ramKits = [], fanPacks = [], slots
                         <p style={{ fontSize: 13, color: '#111827', fontWeight: 600, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kit.component.name}</p>
                       </div>
                       <span style={{ fontSize: 14, fontWeight: 700, color: '#2563eb', flexShrink: 0 }}>{formatPrice(kit.component.price)}</span>
+                    </div>
+                  ))
+                }
+
+                if (slot.key === 'STORAGE') {
+                  return storageItems.map((item, idx) => (
+                    <div key={`STORAGE-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 10 }}>
+                      {(item.component.imageUrl || item.component.images?.[0]) && (
+                        <img src={item.component.imageUrl || item.component.images[0]} alt={item.component.name} style={{ width: 44, height: 44, objectFit: 'contain', background: '#fff', borderRadius: 8, flexShrink: 0 }} />
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, fontWeight: 500 }}>Storage</p>
+                        <p style={{ fontSize: 13, color: '#111827', fontWeight: 600, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.component.name}</p>
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#2563eb', flexShrink: 0 }}>{formatPrice(item.component.price)}</span>
                     </div>
                   ))
                 }

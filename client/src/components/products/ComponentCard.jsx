@@ -70,7 +70,7 @@ export default function ComponentCard({ component }) {
             src={imageUrl}
             alt={component.name}
             onError={() => setImgError(true)}
-            style={{ maxWidth: '80%', maxHeight: '80%', objectFit: 'contain', padding: 12 }}
+            style={{ maxWidth: '80%', maxHeight: '80%', objectFit: 'contain', padding: 12, mixBlendMode: 'multiply' }}
           />
         ) : (
           <FallbackIcon style={{ width: 48, height: 48, color: '#cbd5e1' }} />

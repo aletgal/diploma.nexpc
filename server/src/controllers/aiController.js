@@ -86,89 +86,123 @@ const recommend = async (req, res, next) => {
       ? currentBuild
       : Object.entries(currentBuild || {}).filter(([, v]) => v).map(([slot, c]) => ({ slot, ...c }))
 
-    const isUnlimited = !budget?.max || budget.max === null || budget.max === 0
-    const effectiveBudget = isUnlimited ? 99999999 : budget.max
+    const purpose = (ac.purpose || '').toLowerCase()
+    const specificUse = JSON.stringify(ac.specificUse || '').toLowerCase()
+    const prefs = (ac.additionalPreferences || '').toLowerCase()
+    const combined = purpose + specificUse + prefs
+
+    const isCS2 = /cs2|counter.strike|csgo/i.test(combined)
+    const isRendering = /render|3d|blender|maya|cinema|davinci/i.test(combined)
+    const isStreaming = /stream|стрим/i.test(combined)
+    const isOffice = /office|офис|work|работ/i.test(purpose)
+    const isGaming = /gaming|игр|game|fps/i.test(combined)
+    const isUnlimited = !budget?.max || budget.max === null || budget.max >= 2000000
+    const totalBudget = isUnlimited ? 99999999 : (budget.max || 99999999)
+
     const spentBudget = buildList.reduce((sum, c) => sum + (c.price || 0), 0)
-    const remainingBudget = effectiveBudget - spentBudget
+    const remainingBudget = totalBudget - spentBudget
 
     const allComponents = await prisma.component.findMany({
       where: { category: selectingCategory, stock: { gt: 0 } },
     })
 
-    const purpose = (ac.purpose || '').toLowerCase()
-    const specificUse = JSON.stringify(ac.specificUse || '').toLowerCase()
-    const isRendering = /render|3d|blender|maya|cinema|davinci|монтаж|видео|workstation/i.test(purpose + specificUse)
-    const isGaming = /gaming|игр|game|fps/i.test(purpose + specificUse)
-    const isHighEnd = effectiveBudget >= 1000000
+    let dynamicWeights
+    if (isCS2) {
+      dynamicWeights = { CPU: 0.35, GPU: 0.20, MOTHERBOARD: 0.12, RAM: 0.10, STORAGE: 0.08, PSU: 0.07, CASE: 0.05, COOLING: 0.02, FAN: 0.01 }
+    } else if (isRendering) {
+      dynamicWeights = { CPU: 0.30, GPU: 0.28, RAM: 0.18, MOTHERBOARD: 0.10, STORAGE: 0.07, PSU: 0.05, CASE: 0.01, COOLING: 0.01, FAN: 0.00 }
+    } else if (isStreaming) {
+      dynamicWeights = { CPU: 0.28, GPU: 0.25, RAM: 0.12, MOTHERBOARD: 0.12, STORAGE: 0.10, PSU: 0.08, CASE: 0.03, COOLING: 0.01, FAN: 0.01 }
+    } else if (isOffice) {
+      dynamicWeights = { CPU: 0.30, MOTHERBOARD: 0.15, RAM: 0.15, STORAGE: 0.15, PSU: 0.12, CASE: 0.10, GPU: 0.00, COOLING: 0.05, FAN: 0.03 }
+    } else if (isGaming) {
+      dynamicWeights = { GPU: 0.38, CPU: 0.22, MOTHERBOARD: 0.10, RAM: 0.10, STORAGE: 0.08, PSU: 0.07, CASE: 0.03, COOLING: 0.01, FAN: 0.01 }
+    } else {
+      dynamicWeights = { GPU: 0.30, CPU: 0.22, MOTHERBOARD: 0.12, RAM: 0.12, STORAGE: 0.09, PSU: 0.08, CASE: 0.05, COOLING: 0.01, FAN: 0.01 }
+    }
 
-    const scoredComponents = allComponents.map((comp) => {
+    const slotWeight = dynamicWeights[selectingCategory] || 0.10
+    const slotHardMax = isUnlimited ? 99999999 : Math.floor(totalBudget * slotWeight * 1.2)
+    const remainingHardMax = isUnlimited ? 99999999 : Math.floor(remainingBudget * 0.5)
+    const absoluteMax = isUnlimited ? 99999999 : Math.min(slotHardMax, remainingHardMax)
+
+    let filteredComponents = allComponents.filter((c) => c.price <= absoluteMax)
+    if (filteredComponents.length === 0) {
+      filteredComponents = [...allComponents].sort((a, b) => a.price - b.price).slice(0, 5)
+    }
+
+    if (selectingCategory === 'CPU' && isOffice) {
+      filteredComponents = [...filteredComponents].sort((a, b) => {
+        const aHas = a.specData?.integratedGraphics && a.specData.integratedGraphics !== 'No' ? 1 : 0
+        const bHas = b.specData?.integratedGraphics && b.specData.integratedGraphics !== 'No' ? 1 : 0
+        return bHas - aHas
+      })
+    }
+
+    const scoredComponents = filteredComponents.map((comp) => {
       let score = 0
       const spec = comp.specData || {}
+      const isX3D = /x3d/i.test(comp.name)
+      const cores = parseInt(spec.cores) || 0
+      const boost = parseFloat(spec.boostClock) || 0
+      const vram = parseInt(spec.memorySize) || 0
 
       if (selectingCategory === 'CPU') {
-        const cores = parseInt(spec.cores) || 0
-        const boost = parseFloat(spec.boostClock) || 0
-        const isX3D = /x3d/i.test(comp.name)
-        const isI9 = /i9|ryzen 9/i.test(comp.name)
-        const isI7 = /i7|ryzen 7/i.test(comp.name)
-
-        if (isRendering) {
-          score += cores * 10
-          score += boost * 5
-          if (isX3D) score -= 200
-          if (isI9) score += 150
-          if (isI7) score += 80
-        } else if (isGaming) {
-          score += boost * 15
-          if (isX3D) score += 200
-          score += cores * 3
-        } else {
-          score += cores * 8
-          score += boost * 8
+        if (isCS2) { score += boost * 20; if (isX3D) score += 300; score += cores * 2 }
+        else if (isRendering) { score += cores * 15; score += boost * 5; if (isX3D) score -= 200 }
+        else if (isStreaming) { score += cores * 12; score += boost * 8 }
+        else if (isOffice) {
+          if (spec.integratedGraphics && spec.integratedGraphics !== 'No') score += 200
+          score += cores * 5
         }
-
-        if (isUnlimited || isHighEnd) {
-          if (comp.price < 150000) score -= 300
-          if (comp.price < 100000) score -= 500
-        }
+        else { score += boost * 10; score += cores * 8 }
+        if (!isUnlimited && totalBudget < 400000) score -= (comp.price / totalBudget) * 500
       }
 
       if (selectingCategory === 'GPU') {
-        const vram = parseInt(spec.memorySize) || 0
-        const isRendering3D = /render|3d|blender|maya|cinema/i.test(purpose + specificUse)
-        score += vram * 20
+        score += vram * 15
+        if (isRendering) score += vram * 20
         score += (comp.price / 10000)
-
-        if (isRendering3D) {
-          score += vram * 30
-        }
-
-        if (isUnlimited || isHighEnd) {
-          if (comp.price < 200000) score -= 400
-        }
+        if (!isUnlimited && totalBudget < 400000) score -= 1000
       }
 
       if (selectingCategory === 'RAM') {
         const size = parseInt(spec.memorySize) || 0
         const speed = parseInt(spec.memoryClock) || 0
-        score += size * 5
-        score += speed * 0.1
+        score += size * 5 + speed * 0.1
         if (isRendering) score += size * 10
       }
-
-      score += (comp.price / effectiveBudget) * 100
 
       return { ...comp, score }
     })
 
-    const sortedComponents = scoredComponents.sort((a, b) => b.score - a.score)
-    const topComponents = sortedComponents.slice(0, 10)
+    const topComponents = scoredComponents.sort((a, b) => b.score - a.score).slice(0, 10)
 
     const budgetSection = isUnlimited
       ? 'BUDGET: UNLIMITED. Recommend the absolute best component regardless of price. Do not mention budget constraints or price warnings in the reason.'
-      : `Budget: ${effectiveBudget}₸
+      : `Budget: ${totalBudget}₸
 Budget spent: ${spentBudget}₸
 Budget remaining: ${remainingBudget}₸`
+
+    const budgetAllocation = `BUDGET ALLOCATION FOR THIS BUILD:
+${isCS2 ? 'CS2: CPU gets 35% budget - highest single-core speed wins. X3D cache is best for CS2.' : ''}
+${isRendering ? 'RENDERING: CPU cores (30%) and GPU VRAM (28%) are priority.' : ''}
+${isStreaming ? 'STREAMING: Balance CPU encoding power and GPU gaming performance.' : ''}
+${isOffice ? 'OFFICE: Prefer iGPU CPUs. No dedicated GPU needed for office work.' : ''}
+${isGaming ? 'GAMING: GPU is priority (38%). Best GPU first, then CPU.' : ''}
+${isUnlimited ? 'UNLIMITED BUDGET: Recommend absolute best regardless of price.' : ''}
+Hard limit for ${selectingCategory}: ${absoluteMax === 99999999 ? 'no limit' : absoluteMax + '₸'}
+Do not recommend anything above this limit.`
+
+    const templateGuides = {
+      budget_gaming: 'This is a BUDGET GAMING build (~300,000₸). Recommend affordable upgrades. For each slot offer 3 options: 1 budget option, 1 mid option, 1 best value option.',
+      stream_setup: 'This is a STREAMING build. User streams games. CPU encoding matters. Recommend: 1 premium streaming GPU (good NVENC), 1 mid streaming GPU, 1 budget streaming GPU.',
+      rendering_3d: 'This is a 3D RENDERING workstation. Core count and VRAM are priority. Recommend: 1 professional option (highest cores/VRAM), 1 mid workstation option, 1 budget workstation option.',
+      no_limits: 'This is an UNLIMITED BUDGET build. Recommend ONLY top-tier components. All 3 recommendations should be high-end, differentiated by brand/performance tier.',
+    }
+    const templateSection = ac.isTemplate && templateGuides[ac.templateType]
+      ? `\n${templateGuides[ac.templateType]}\n`
+      : ''
 
     const prompt = `You are expert PC builder for NEX PC Kazakhstan.
 
@@ -178,6 +212,8 @@ Customer profile:
 - Preferences: ${ac.additionalPreferences}
 
 ${budgetSection}
+${templateSection}
+${budgetAllocation}
 
 Already selected components:
 ${buildList.length > 0 ? buildList.map((c) => `${c.slot}: ${c.name} (${c.price}₸)`).join('\n') : 'None yet'}
@@ -217,8 +253,8 @@ Return JSON only: {"recommendations": [{"componentId": "exact_id", "priority": 1
 
     if (recommendations.length === 0 && allComponents.length > 0) {
       console.warn('[AI recommend] Fallback triggered for', selectingCategory)
-      const affordable = sortedComponents.filter((c) => remainingBudget <= 0 || (c.price || 0) <= remainingBudget)
-      const pool = affordable.length > 0 ? affordable : sortedComponents
+      const affordable = scoredComponents.filter((c) => remainingBudget <= 0 || (c.price || 0) <= remainingBudget)
+      const pool = affordable.length > 0 ? affordable : scoredComponents
       recommendations = pool.slice(0, 3).map((c, i) => ({
         componentId: c.id,
         priority: i + 1,

@@ -83,9 +83,9 @@ export default function ProductCard({ product }) {
     <Link to={`/products/${product.id}`} className="group block">
       <div className="card overflow-hidden flex flex-col h-full transition-shadow hover:shadow-md">
         {/* Image */}
-        <div className="relative bg-[#f8fafc] overflow-hidden" style={{ aspectRatio: '1/1', borderRadius: '12px 12px 0 0' }}>
+        <div className="relative bg-[#f8fafc] overflow-hidden" style={{ aspectRatio: '1/1', borderRadius: '12px 12px 0 0', backgroundColor: '#f8fafc' }}>
           {imageUrl ? (
-            <img src={imageUrl} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 16 }} />
+            <img src={imageUrl} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 16, mixBlendMode: 'multiply' }} />
           ) : (
             <div className="flex items-center justify-center w-full h-full">
               <Monitor className="w-12 h-12 text-gray-300" />

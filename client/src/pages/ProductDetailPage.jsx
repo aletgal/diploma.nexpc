@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import { formatPrice, formatCategory } from '../utils/formatters'
 import { productsApi } from '../api/products'
 import { reviewsApi } from '../api/reviews'
+import { ordersApi } from '../api/orders'
 import api from '../api/client'
 import Spinner from '../components/ui/Spinner'
 
@@ -194,21 +195,48 @@ function ReviewsList({ productId }) {
 
 
 function ReviewsSection({ productId }) {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const [showForm, setShowForm] = useState(false)
 
-  const canReview = isAuthenticated
+  const { data: ordersData } = useQuery({
+    queryKey: ['orders', 'mine'],
+    queryFn: () => ordersApi.getAll().then((r) => r.data),
+    enabled: isAuthenticated,
+  })
+
+  const orders = ordersData?.orders ?? []
+  const emailVerified = user?.emailVerified === true
+  const hasDeliveredProduct = orders.some(
+    (o) => o.status === 'DELIVERED' && Array.isArray(o.items) && o.items.some((it) => it.productId === productId)
+  )
+
+  const canReview = isAuthenticated && emailVerified && hasDeliveredProduct
 
   return (
     <div className="mt-12">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-gray-900">Customer Reviews</h2>
         {canReview && !showForm && (
-          <button onClick={() => setShowForm(true)} className="btn-secondary text-sm">
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Star className="w-4 h-4 fill-white" />
             Write a Review
           </button>
         )}
       </div>
+
+      {isAuthenticated && !emailVerified && (
+        <div className="mb-6 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p className="text-sm text-amber-700">Verify your email to leave a review</p>
+        </div>
+      )}
+      {isAuthenticated && emailVerified && !hasDeliveredProduct && (
+        <div className="mb-6 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <p className="text-sm text-gray-600">Purchase and receive this product to leave a review</p>
+        </div>
+      )}
 
       <RatingSummary productId={productId} />
 

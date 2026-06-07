@@ -63,6 +63,8 @@ const SPEC_FIELDS = {
     { key: 'ramSlots', label: 'RAM Slots', type: 'kitSize', options: [2, 4, 8], default: 4 },
     { key: 'supportedRamType', label: 'Supported RAM Type', type: 'select', options: ['DDR4', 'DDR5'] },
     { key: 'maxRamSpeed', label: 'Max RAM Speed (MHz)', type: 'text', placeholder: 'e.g. 6000' },
+    { key: 'm2Slots', label: 'M.2 Slots', type: 'number', placeholder: 'e.g. 2', default: 2 },
+    { key: 'sataSlots', label: 'SATA Slots', type: 'number', placeholder: 'e.g. 4', default: 4 },
   ],
   RAM: [
     { key: 'memoryClock', label: 'Memory Clock', type: 'text', placeholder: 'e.g. 6000' },

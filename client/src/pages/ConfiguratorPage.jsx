@@ -8,6 +8,28 @@ const SKIP_KEY = 'skipQuestionnaire'
 const PRE_SELECT_KEY = 'preSelectComponent'
 const TEMPLATE_KEY = 'nexpc_template'
 
+function templateBuildToInitial(buildArr) {
+  if (!Array.isArray(buildArr)) return buildArr || null
+  const obj = {}
+  for (const item of buildArr) {
+    const comp = item.component
+    if (!comp) continue
+    if (item.slot === 'RAM') {
+      if (!obj.RAM) obj.RAM = []
+      obj.RAM.push({ component: comp, sticksUsed: comp.specData?.sticksInKit || 2 })
+    } else if (item.slot === 'STORAGE') {
+      if (!obj.STORAGE) obj.STORAGE = []
+      obj.STORAGE.push({ component: comp })
+    } else if (item.slot === 'FAN') {
+      if (!obj.FAN) obj.FAN = []
+      obj.FAN.push({ component: comp, count: item.packSize || 1 })
+    } else {
+      obj[item.slot] = comp
+    }
+  }
+  return obj
+}
+
 export default function ConfiguratorPage() {
   const [phase, setPhase] = useState(() => {
     try {
@@ -54,6 +76,7 @@ export default function ConfiguratorPage() {
       const buildTemplateRaw = localStorage.getItem('nexpc_build_template')
       if (buildTemplateRaw) {
         const t = JSON.parse(buildTemplateRaw)
+        if (Array.isArray(t.build)) return templateBuildToInitial(t.build)
         return t.components || null
       }
       const raw = localStorage.getItem(LOAD_BUILD_KEY)
