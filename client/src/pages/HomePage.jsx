@@ -5,6 +5,7 @@ import { useFeaturedProducts, useHeroProducts } from '../hooks/useProducts'
 import { formatPrice } from '../utils/formatters'
 import ProductCard from '../components/products/ProductCard'
 import Spinner from '../components/ui/Spinner'
+import api from '../api/client'
 
 const TEMPLATES = [
   {
@@ -47,16 +48,23 @@ const TEMPLATES = [
 
 function BuildLikeAProSection() {
   const navigate = useNavigate()
+  const [loadingId, setLoadingId] = useState(null)
 
-  function loadTemplate(template) {
-    localStorage.setItem('nexpc_build_template', JSON.stringify({
-      templateName: template.name,
-      budget: { min: 0, max: template.price },
-      purpose: template.aiContext.useCase,
-      additionalPreferences: template.specs.join(', '),
-      skipQuestionnaire: true,
-    }))
-    navigate('/build')
+  async function loadTemplate(template) {
+    const templateType = template.id.replace(/-/g, '_')
+    setLoadingId(template.id)
+    try {
+      const res = await api.post('/ai/build-template', { templateType })
+      const data = res.data
+      localStorage.setItem('nexpc_build_template', JSON.stringify({
+        components: data.components,
+        aiContext: data.aiContext,
+        templateName: data.templateName,
+      }))
+      navigate('/build')
+    } catch {
+      setLoadingId(null)
+    }
   }
 
   return (
@@ -91,9 +99,14 @@ function BuildLikeAProSection() {
                 </ul>
                 <button
                   onClick={() => loadTemplate(tpl)}
-                  className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold text-primary-600 hover:text-primary-700 border border-primary-200 hover:border-primary-400 rounded-xl py-2.5 transition-colors"
+                  disabled={loadingId !== null}
+                  className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold text-primary-600 hover:text-primary-700 border border-primary-200 hover:border-primary-400 rounded-xl py-2.5 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Load Template <ChevronRight className="w-4 h-4" />
+                  {loadingId === tpl.id ? (
+                    <><Spinner size="sm" /> Loading...</>
+                  ) : (
+                    <>Load Template <ChevronRight className="w-4 h-4" /></>
+                  )}
                 </button>
               </div>
             </div>

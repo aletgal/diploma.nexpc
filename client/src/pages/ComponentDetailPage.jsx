@@ -8,7 +8,7 @@ import {
   HardDrive, Wind, Layers,
 } from 'lucide-react'
 import { componentsApi } from '../api/components'
-import { formatPrice, formatCategory } from '../utils/formatters'
+import { formatPrice, formatCategory, addSpecSuffix, formatStorageSize } from '../utils/formatters'
 import Spinner from '../components/ui/Spinner'
 
 const CATEGORY_BADGE_CLS = {
@@ -26,11 +26,13 @@ const SPEC_LABELS = {
   modularity: 'Modularity', power: 'Power', certificate: 'Efficiency Rating',
   waterCooling: 'Water Cooling', noise: 'Noise Level', rgb: 'RGB',
   readSpeed: 'Read Speed', writeSpeed: 'Write Speed',
+  ramSlots: 'RAM Slots', supportedRamType: 'Supported RAM Type', maxRamSpeed: 'Max RAM Speed',
 }
 
-function formatSpecValue(key, value) {
+function formatSpecValue(category, key, value) {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  return String(value)
+  if (category === 'STORAGE' && key === 'memorySize') return String(formatStorageSize(value))
+  return String(addSpecSuffix(category, key, value))
 }
 
 
@@ -49,18 +51,24 @@ function getQuickTagData(component) {
     if (sd.coreClock) tags.push(`${sd.coreClock} Core`)
   } else if (category === 'RAM') {
     if (sd.memoryType) tags.push(sd.memoryType)
-    if (sd.memoryClock) tags.push(String(sd.memoryClock))
-    if (sd.timings) tags.push(sd.timings)
+    if (sd.memoryClock) tags.push(String(addSpecSuffix(category, 'memoryClock', sd.memoryClock)))
+    if (sd.timings) tags.push(String(addSpecSuffix(category, 'timings', sd.timings)))
+    const sticks = Number(sd.sticksInKit)
+    if (sticks >= 2) {
+      const totalGb = parseInt(sd.memorySize)
+      const perStick = totalGb ? totalGb / sticks : null
+      tags.push(perStick ? `${sticks}×${perStick}GB Kit` : `${sticks}× Kit`)
+    }
   } else if (category === 'STORAGE') {
     if (sd.memoryType) tags.push(sd.memoryType)
-    if (sd.readSpeed) tags.push(`R: ${sd.readSpeed}`)
-    if (sd.writeSpeed) tags.push(`W: ${sd.writeSpeed}`)
+    if (sd.readSpeed) tags.push(`R: ${addSpecSuffix(category, 'readSpeed', sd.readSpeed)}`)
+    if (sd.writeSpeed) tags.push(`W: ${addSpecSuffix(category, 'writeSpeed', sd.writeSpeed)}`)
   } else if (category === 'MOTHERBOARD') {
     if (sd.socket) tags.push(sd.socket)
     if (sd.chipset) tags.push(sd.chipset)
     if (sd.formFactor) tags.push(sd.formFactor)
   } else if (category === 'PSU') {
-    if (sd.power) tags.push(String(sd.power))
+    if (sd.power) tags.push(String(addSpecSuffix(category, 'power', sd.power)))
     if (sd.certificate) tags.push(sd.certificate)
     if (sd.modularity) tags.push(sd.modularity)
   } else if (category === 'CASE') {
@@ -314,7 +322,7 @@ function AIDescriptionSection({ component }) {
   if (!loading && !desc) return null
 
   return (
-    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40 }}>
+    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40, marginTop: 40 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <Zap style={{ width: 18, height: 18, color: '#2563eb' }} />
         <h2 style={{ fontSize: 20, fontWeight: 600, color: '#111827', margin: 0 }}>AI Overview</h2>
@@ -338,7 +346,7 @@ function CompatibilityNotesSection({ component }) {
   if (notes.length === 0) return null
 
   return (
-    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40 }}>
+    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40, marginTop: 40 }}>
       <h2 style={{ fontSize: 20, fontWeight: 600, color: '#111827', marginBottom: 16 }}>Compatibility Notes</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {notes.map((note, i) => (
@@ -361,7 +369,7 @@ function WhoIsThisForSection({ component }) {
   if (cases.length === 0) return null
 
   return (
-    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40 }}>
+    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40, marginTop: 40 }}>
       <h2 style={{ fontSize: 20, fontWeight: 600, color: '#111827', marginBottom: 16 }}>Best For</h2>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         {cases.map((c) => {
@@ -400,7 +408,7 @@ function AlternativesSection({ component }) {
   const allItems = [component, ...alternatives]
 
   return (
-    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40 }}>
+    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40, marginTop: 40 }}>
       <h2 style={{ fontSize: 20, fontWeight: 600, color: '#111827', marginBottom: 16 }}>How It Compares</h2>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
@@ -430,7 +438,7 @@ function AlternativesSection({ component }) {
                 <td style={{ padding: '10px 16px', fontSize: 13, color: '#6b7280', fontWeight: 500, borderBottom: '1px solid #f3f4f6' }}>{label}</td>
                 {allItems.map((item, idx) => {
                   const val = (item.specData || {})[key]
-                  const display = val !== undefined && val !== null && val !== '' ? formatSpecValue(key, val) : '—'
+                  const display = val !== undefined && val !== null && val !== '' ? formatSpecValue(item.category, key, val) : '—'
                   return (
                     <td key={item.id} style={{ padding: '10px 16px', fontSize: 13, color: '#374151', borderBottom: '1px solid #f3f4f6', background: idx === 0 ? '#f8fbff' : 'transparent' }}>
                       {display}
@@ -661,7 +669,7 @@ export default function ComponentDetailPage() {
                       {SPEC_LABELS[key] || key.replace(/_/g, ' ')}
                     </td>
                     <td style={{ padding: '12px 20px', color: '#111827', fontSize: 14 }}>
-                      {formatSpecValue(key, value)}
+                      {formatSpecValue(component.category, key, value)}
                     </td>
                   </tr>
                 ))}
@@ -679,7 +687,7 @@ export default function ComponentDetailPage() {
         <AlternativesSection component={component} />
 
         {usedInProducts.length > 0 && (
-          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40 }}>
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 40, marginTop: 40 }}>
             <h2 style={{ fontSize: 20, fontWeight: 600, color: '#111827', marginBottom: 20 }}>Used in These Builds</h2>
             <div className="flex flex-wrap gap-4">
               {usedInProducts.map((prod) => (

@@ -7,8 +7,9 @@ import ComponentCard from '../components/products/ComponentCard'
 import Spinner from '../components/ui/Spinner'
 import Pagination from '../components/ui/Pagination'
 import EmptyState from '../components/ui/EmptyState'
+import { formatStorageSize } from '../utils/formatters'
 
-const PRICE_MAX = 2_000_000
+const PRICE_MAX = 20_000_000
 const PRICE_STEP = 1_000
 
 const SORT_OPTIONS = [
@@ -114,7 +115,7 @@ function DualRangeSlider({ valueMin, valueMax, onChangeMin, onChangeMax, onCommi
   )
 }
 
-function FilterSection({ title, values = [], activeValue, onToggle }) {
+function FilterSection({ title, values = [], activeValue, onToggle, formatLabel }) {
   const [open, setOpen] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const VISIBLE = 8
@@ -144,7 +145,7 @@ function FilterSection({ title, values = [], activeValue, onToggle }) {
                     : 'border-gray-200 text-gray-600 hover:bg-primary-50 hover:border-primary-300'
                 }`}
               >
-                {val}
+                {formatLabel ? formatLabel(val) : val}
               </button>
             ))}
           </div>
@@ -395,6 +396,7 @@ export default function ComponentsPage() {
               values={values}
               activeValue={getActiveValue(filterDef.key)}
               onToggle={(val) => toggleFilter(filterDef.key, val)}
+              formatLabel={cat === 'STORAGE' && filterDef.key === 'memorySize' ? formatStorageSize : undefined}
             />
           )
         })}

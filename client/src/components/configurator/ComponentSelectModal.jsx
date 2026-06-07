@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Search, Info, AlertTriangle, Zap, ChevronLeft } from 'lucide-react'
 import api from '../../api/client'
 import { componentsApi } from '../../api/components'
-import { formatPrice } from '../../utils/formatters'
+import { formatPrice, addSpecSuffix, formatStorageSize } from '../../utils/formatters'
 import { CATEGORY_BADGE_STYLES } from '../products/ComponentCard'
 
 const SLOT_BUDGET_WEIGHTS = {
@@ -86,15 +86,15 @@ function getKeySpecs(component) {
     case 'CPU':         return [sd.cores && `${sd.cores} Cores`, sd.boostClock && `Boost ${sd.boostClock}`, sd.tdp && `TDP ${sd.tdp}`].filter(Boolean)
     case 'GPU':         return [sd.memorySize && sd.memoryType && `${sd.memorySize} ${sd.memoryType}`, sd.coreClock && `Core ${sd.coreClock}`].filter(Boolean)
     case 'RAM': {
-      const kitStr = sd.kitSize && sd.stickSize ? `${sd.kitSize}×${sd.stickSize}GB` : sd.memorySize
-      return [kitStr && sd.memoryType && `${kitStr} ${sd.memoryType}`, sd.memoryClock].filter(Boolean)
+      const kitStr = sd.kitSize && sd.stickSize ? `${sd.kitSize}×${sd.stickSize}GB` : addSpecSuffix('RAM', 'memorySize', sd.memorySize)
+      return [kitStr && sd.memoryType && `${kitStr} ${sd.memoryType}`, sd.memoryClock && addSpecSuffix('RAM', 'memoryClock', sd.memoryClock)].filter(Boolean)
     }
-    case 'STORAGE':     return [sd.memorySize, sd.memoryType, sd.readSpeed && `Read ${sd.readSpeed}`].filter(Boolean)
+    case 'STORAGE':     return [sd.memorySize && formatStorageSize(sd.memorySize), sd.memoryType, sd.readSpeed && `Read ${addSpecSuffix('STORAGE', 'readSpeed', sd.readSpeed)}`].filter(Boolean)
     case 'MOTHERBOARD': return [sd.chipset, sd.socket, sd.formFactor].filter(Boolean)
-    case 'PSU':         return [sd.power, sd.certificate, sd.modularity].filter(Boolean)
+    case 'PSU':         return [sd.power && addSpecSuffix('PSU', 'power', sd.power), sd.certificate, sd.modularity].filter(Boolean)
     case 'CASE':        return [sd.formFactor, sd.gpuLength && `GPU up to ${sd.gpuLength}`].filter(Boolean)
-    case 'COOLING':     return [sd.waterCooling ? 'AIO Liquid' : 'Air Cooling', sd.tdp && `${sd.tdp} TDP support`].filter(Boolean)
-    case 'FAN':         return [sd.dimensions, sd.noise && `${sd.noise}`, sd.rgb && 'RGB'].filter(Boolean)
+    case 'COOLING':     return [sd.waterCooling ? 'AIO Liquid' : 'Air Cooling', sd.tdp && `${addSpecSuffix('COOLING', 'tdp', sd.tdp)} TDP support`].filter(Boolean)
+    case 'FAN':         return [sd.dimensions && addSpecSuffix('FAN', 'dimensions', sd.dimensions), sd.noise && `${sd.noise}`, sd.rgb && 'RGB'].filter(Boolean)
     default:            return []
   }
 }
@@ -162,7 +162,7 @@ function ComponentCard({ component, aiRec, aiIncomp, onSelect, incompatibleReaso
         </div>
       )}
       {aiRec && (
-        <div style={{ position: 'absolute', top: 0, left: 0, background: isOverBudget ? '#eab308' : '#22c55e', color: '#fff', fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: '0 0 8px 0', zIndex: 2, letterSpacing: '0.04em' }}>
+        <div style={{ position: 'absolute', top: 6, left: 6, background: isOverBudget ? '#eab308' : '#22c55e', color: '#fff', fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, zIndex: 2, letterSpacing: '0.04em' }}>
           {isOverBudget ? '⚠ AI PICK (over budget)' : '✦ AI PICK'}
         </div>
       )}
@@ -294,9 +294,9 @@ export default function ComponentSelectModal({ category, build, aiContext, build
       setAiLoading(true)
       const currentBuild = Object.entries(build)
         .filter(([, v]) => v)
-        .map(([slot, v]) => ({ slot, name: v.name, price: v.price, specData: v.specData, category: v.category }))
+        .map(([slot, v]) => ({ slot, name: v.name, price: v.price, specData: v.specData, category: v.category, color: v.color }))
       const available = list.map((c) => ({
-        id: c.id, name: c.name, manufacturer: c.manufacturer, price: c.price, specData: c.specData,
+        id: c.id, name: c.name, manufacturer: c.manufacturer, price: c.price, specData: c.specData, color: c.color,
       }))
 
       const spentBudget = currentBuild.reduce((s, c) => s + (c?.price || 0), 0)
@@ -310,10 +310,9 @@ export default function ComponentSelectModal({ category, build, aiContext, build
         currentBuild,
         selectingCategory: category,
         availableComponents: available,
-        budget: {
-          min: aiContext?.budget?.min || 0,
-          max: aiContext?.budget?.max || 999999,
-        },
+        budget: (!aiContext?.budget?.max || aiContext.budget.max === 0)
+          ? { min: 0, max: null }
+          : { min: aiContext?.budget?.min || 0, max: aiContext.budget.max },
         buildMeta: {
           ...buildMeta,
           spentBudget,

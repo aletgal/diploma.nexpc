@@ -194,7 +194,7 @@ export default function ConfiguratorQuestionnaire({ onComplete }) {
       resolution: resolution || undefined,
       preferences: preferences || undefined,
       additionalPreferences: preferences || undefined,
-      budget: { min: budget[0], max: budget[1] === BUDGET_MAX ? null : budget[1] },
+      budget: budget[1] === BUDGET_MAX ? { min: 0, max: null } : { min: budget[0], max: budget[1] },
     }
     onComplete(ctx)
   }
@@ -311,7 +311,7 @@ export default function ConfiguratorQuestionnaire({ onComplete }) {
                   )}
                   <div style={{ textAlign: 'center', marginTop: 22 }}>
                     <button
-                      onClick={() => onComplete({ useCase: 'custom', skipQuestionnaire: true, budget: { min: 0, max: 9999999 } })}
+                      onClick={() => onComplete({ useCase: 'custom', skipQuestionnaire: true, budget: { min: 0, max: null } })}
                       style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 13, cursor: 'pointer', textDecoration: 'none' }}
                       onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
                       onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}

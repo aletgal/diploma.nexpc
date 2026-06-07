@@ -79,165 +79,124 @@ const chat = async (req, res, next) => {
 
 const recommend = async (req, res, next) => {
   try {
-    const { aiContext, currentBuild, selectingCategory, availableComponents, budget, buildMeta = {} } = req.body
+    const { aiContext, currentBuild, selectingCategory, budget } = req.body
 
-    // currentBuild is array; supports legacy object format too
+    const ac = aiContext || {}
     const buildList = Array.isArray(currentBuild)
       ? currentBuild
       : Object.entries(currentBuild || {}).filter(([, v]) => v).map(([slot, c]) => ({ slot, ...c }))
 
+    const isUnlimited = !budget?.max || budget.max === null || budget.max === 0
+    const effectiveBudget = isUnlimited ? 99999999 : budget.max
     const spentBudget = buildList.reduce((sum, c) => sum + (c.price || 0), 0)
-    const budgetMax = budget?.max || 0
-    const remainingBudget = budgetMax > 0 ? budgetMax - spentBudget : null
+    const remainingBudget = effectiveBudget - spentBudget
 
-    const suggestedMax = budgetMax > 0
-      ? Math.floor(budgetMax * (SLOT_BUDGET_WEIGHTS[selectingCategory] || 0.10))
-      : null
-    const hardMax = remainingBudget != null ? Math.floor(remainingBudget * 0.65) : null
-    const finalMax = (suggestedMax != null && hardMax != null)
-      ? Math.min(suggestedMax, hardMax)
-      : (suggestedMax || hardMax || null)
+    const allComponents = await prisma.component.findMany({
+      where: { category: selectingCategory, stock: { gt: 0 } },
+    })
 
-    let filteredComponents = availableComponents || []
-    if (finalMax != null && finalMax > 0) {
-      const maxPrice = Math.max(finalMax, (remainingBudget || 0) * 0.8)
-      const budgetFiltered = filteredComponents.filter((c) => c.price <= maxPrice)
-      if (budgetFiltered.length > 0) filteredComponents = budgetFiltered
-    }
+    const purpose = (ac.purpose || '').toLowerCase()
+    const specificUse = JSON.stringify(ac.specificUse || '').toLowerCase()
+    const isRendering = /render|3d|blender|maya|cinema|davinci|монтаж|видео|workstation/i.test(purpose + specificUse)
+    const isGaming = /gaming|игр|game|fps/i.test(purpose + specificUse)
+    const isHighEnd = effectiveBudget >= 1000000
 
-    const getPackSize = (comp) => {
-      const text = `${comp.name || ''} ${comp.description || ''}`.toLowerCase()
-      if (/5[- ]?pack|5pack/.test(text)) return 5
-      if (/3[- ]?pack|triple[- ]?pack|3pack/.test(text)) return 3
-      if (/2[- ]?pack|dual[- ]?pack|2pack/.test(text)) return 2
-      return 1
-    }
+    const scoredComponents = allComponents.map((comp) => {
+      let score = 0
+      const spec = comp.specData || {}
 
-    const componentList = filteredComponents.slice(0, 30).map((c) => ({
-      id: c.id,
-      name: c.name,
-      manufacturer: c.manufacturer,
-      price: c.price,
-      specData: c.specData,
-      ...(selectingCategory === 'FAN' && { packSize: getPackSize(c) }),
-    }))
+      if (selectingCategory === 'CPU') {
+        const cores = parseInt(spec.cores) || 0
+        const boost = parseFloat(spec.boostClock) || 0
+        const isX3D = /x3d/i.test(comp.name)
+        const isI9 = /i9|ryzen 9/i.test(comp.name)
+        const isI7 = /i7|ryzen 7/i.test(comp.name)
 
-    const selectedSummary = buildList.length > 0
-      ? buildList.map((c) => `- ${c.slot || c.category || 'component'}: ${c.name} (${(c.price || 0).toLocaleString()}₸)`).join('\n')
-      : 'Nothing selected yet'
-
-    const cpuTdp = buildMeta.cpuTdp || 0
-    const getCategoryGuidance = () => {
-      switch (selectingCategory) {
-        case 'PSU':
-          if (buildMeta.minPsuWattage) {
-            const rec = Math.ceil(buildMeta.minPsuWattage * 1.2)
-            return `MANDATORY: min wattage=${buildMeta.minPsuWattage}W (CPU ${buildMeta.cpuTdp}W + GPU ~${buildMeta.gpuWatts}W + 150W system). Recommend ≥${rec}W. Do NOT go below ${buildMeta.minPsuWattage}W.`
-          }
-          return 'Recommend quality PSU with 20% headroom above estimated system draw. Preferred brands: Corsair, Seasonic, be quiet!'
-        case 'COOLING':
-          return [
-            buildMeta.cpuSocket && `MANDATORY: CPU socket=${buildMeta.cpuSocket}. Cooler MUST list this socket.`,
-            `Case: "${buildMeta.caseName || 'unknown'}" (${buildMeta.caseFormFactor || 'ATX'}). Check cooler height clearance.`,
-            cpuTdp >= 125
-              ? `High-TDP CPU (${cpuTdp}W): recommend 240mm or 360mm AIO, or premium large air cooler.`
-              : `CPU TDP=${cpuTdp}W: air cooler or 120mm AIO sufficient.`,
-          ].filter(Boolean).join(' ')
-        case 'FAN': {
-          const maxFans = buildMeta.maxFans || 4
-          const estFanCost = 9000
-          const budgetAfterFans = remainingBudget != null ? remainingBudget - estFanCost : null
-          return `Case: "${buildMeta.caseName || 'unknown'}" (${buildMeta.caseFormFactor || 'ATX'}), max fans: ${maxFans}.
-CPU TDP: ${cpuTdp}W (from selected CPU specData). Budget remaining after fans: ₸${budgetAfterFans != null ? budgetAfterFans.toLocaleString() : 'N/A'}.
-Purpose: ${aiContext?.purpose || aiContext?.useCase || 'general'}.
-packSize in component data = number of fans in that item (3-pack = 3 fans).
-RECOMMEND specific number of fans (not just one):
-- Gaming + high TDP (>125W): ${maxFans} fans
-- Gaming + low TDP: ${Math.max(2, maxFans - 1)} fans
-- Office: 2 fans minimum
-- Budget remaining < 15000₸: 1-2 fans only
-State exact count in your reason: 'Recommend X fans because...'`
+        if (isRendering) {
+          score += cores * 10
+          score += boost * 5
+          if (isX3D) score -= 200
+          if (isI9) score += 150
+          if (isI7) score += 80
+        } else if (isGaming) {
+          score += boost * 15
+          if (isX3D) score += 200
+          score += cores * 3
+        } else {
+          score += cores * 8
+          score += boost * 8
         }
-        case 'RAM':
-          if (buildMeta.ddrType) return `MANDATORY: Motherboard requires ${buildMeta.ddrType}. ONLY recommend ${buildMeta.ddrType} modules. Wrong type = system won't boot.`
-          return ''
-        case 'GPU':
-          return `Resolution target: ${aiContext?.resolution || 'not specified'}.
-1080p → RTX 4060/4070 or RX 7600/7700 tier.
-1440p → RTX 4070 Ti/4080 or RX 7900 XT tier.
-4K → RTX 4080/4090 tier. Rendering/creative → prioritize VRAM (12GB+).`
-        case 'CPU':
-          return `Use case: ${aiContext?.useCase || 'General'}.
-Competitive FPS (CS2/Valorant): high single-core clock > core count.
-AAA gaming: balance clock + cores.
-3D rendering/ML: maximize core count. Streaming: needs 20-30% CPU headroom.`
-        default: return ''
+
+        if (isUnlimited || isHighEnd) {
+          if (comp.price < 150000) score -= 300
+          if (comp.price < 100000) score -= 500
+        }
       }
-    }
 
-    const categoryGuidance = getCategoryGuidance()
+      if (selectingCategory === 'GPU') {
+        const vram = parseInt(spec.memorySize) || 0
+        const isRendering3D = /render|3d|blender|maya|cinema/i.test(purpose + specificUse)
+        score += vram * 20
+        score += (comp.price / 10000)
 
-    const systemPrompt = `You are an expert PC builder AI for NEX PC store in Kazakhstan.
-Recommend the BEST components from the provided catalog for this customer.
+        if (isRendering3D) {
+          score += vram * 30
+        }
 
-CRITICAL RULES:
-1. BUDGET: Total budget ${budgetMax > 0 ? budgetMax.toLocaleString() : 'unlimited'}₸. Spent so far: ${spentBudget.toLocaleString()}₸. Remaining: ${remainingBudget != null ? remainingBudget.toLocaleString() : 'unlimited'}₸.
-   Only ${buildList.length} slots have been filled so far out of 9 total.
-   Remaining slots still need budget. Suggested max for THIS component: ${finalMax != null ? finalMax.toLocaleString() : 'N/A'}₸
-   NEVER recommend components exceeding ${remainingBudget != null ? Math.floor(remainingBudget * 0.6).toLocaleString() : 'N/A'}₸ for this slot unless it is the last slot.
+        if (isUnlimited || isHighEnd) {
+          if (comp.price < 200000) score -= 400
+        }
+      }
 
-2. CONTEXT: Read the customer profile carefully:
-   - Purpose: ${aiContext?.purpose || aiContext?.useCase || 'General'}
-   - Specific use: ${JSON.stringify(aiContext?.specificUse || aiContext?.games || aiContext?.software || [])}
-   - Additional preferences: ${aiContext?.additionalPreferences || aiContext?.preferences || 'none'}
-   - Budget: ${budgetMax > 0 ? budgetMax.toLocaleString() : 'flexible'}₸
-   These details MUST influence your recommendation heavily.
+      if (selectingCategory === 'RAM') {
+        const size = parseInt(spec.memorySize) || 0
+        const speed = parseInt(spec.memoryClock) || 0
+        score += size * 5
+        score += speed * 0.1
+        if (isRendering) score += size * 10
+      }
 
-3. ONLY selected components count toward spent budget:
-${selectedSummary}
+      score += (comp.price / effectiveBudget) * 100
 
-4. COMPATIBILITY: Ensure recommended component is compatible with already selected components.
-   - CPU ↔ Motherboard: sockets must match exactly (AM5, LGA1700, etc.)
-   - RAM ↔ Motherboard: DDR4/DDR5 must match chipset support
-   - GPU ↔ Case: GPU physical length ≤ case GPU clearance (mm)
-   - Cooler ↔ CPU: cooler socket list must include the CPU socket
-   - PSU: wattage ≥ CPU TDP + GPU TDP + 150W system overhead
+      return { ...comp, score }
+    })
 
-5. ALWAYS return 1-3 recommendations. NEVER return empty array.
-   If no component fits budget perfectly, recommend cheapest available option.
+    const sortedComponents = scoredComponents.sort((a, b) => b.score - a.score)
+    const topComponents = sortedComponents.slice(0, 10)
 
-Respond ONLY with valid JSON, no other text:
-{
-  "recommendations": [{ "componentId": "exact_id", "priority": 1, "reason": "specific reason mentioning customer's use case and budget" }],
-  "incompatible": [{ "componentId": "id", "reason": "exact incompatibility" }]
-}`
+    const budgetSection = isUnlimited
+      ? 'BUDGET: UNLIMITED. Recommend the absolute best component regardless of price. Do not mention budget constraints or price warnings in the reason.'
+      : `Budget: ${effectiveBudget}₸
+Budget spent: ${spentBudget}₸
+Budget remaining: ${remainingBudget}₸`
 
-    const userMessage = `Customer profile:
-- Purpose: ${aiContext?.purpose || aiContext?.useCase || 'General'}
-- Specific use: ${JSON.stringify(aiContext?.specificUse || aiContext?.games || aiContext?.software || [])}
-- Additional preferences: "${aiContext?.additionalPreferences || aiContext?.preferences || 'none'}"
-- Resolution/quality target: ${aiContext?.resolution || 'not specified'}
-- Budget: ₸${(budget?.min || 0).toLocaleString()} – ₸${budgetMax > 0 ? budgetMax.toLocaleString() : 'No limit'}
+    const prompt = `You are expert PC builder for NEX PC Kazakhstan.
 
-Currently selected (${buildList.length} / 9 slots):
-${selectedSummary}
+Customer profile:
+- Purpose: ${ac.purpose}
+- Specific use: ${JSON.stringify(ac.specificUse)}
+- Preferences: ${ac.additionalPreferences}
 
-Selecting now: ${selectingCategory}
-${categoryGuidance ? `\nCategory guidance:\n${categoryGuidance}` : ''}
+${budgetSection}
 
-Available ${selectingCategory} components (use exact IDs from this list):
-${JSON.stringify(componentList, null, 2)}
+Already selected components:
+${buildList.length > 0 ? buildList.map((c) => `${c.slot}: ${c.name} (${c.price}₸)`).join('\n') : 'None yet'}
 
-Return JSON only.`
+Pre-ranked components for ${selectingCategory} (best matches first based on specs and use case):
+${topComponents.map((c, i) => `${i + 1}. [${c.id}] ${c.name} - ${c.price}₸
+   Specs: ${JSON.stringify(c.specData)}`).join('\n')}
+
+Select the TOP 1-3 from this list. Consider compatibility with already selected components.
+${isUnlimited ? 'Do not mention price warnings or budget exceedance in your reason.' : ''}
+Return JSON only: {"recommendations": [{"componentId": "exact_id", "priority": 1, "reason": "specific technical reason why this fits the use case"}]}`
 
     let recommendations = []
     let incompatible = []
     try {
       const response = await anthropic.messages.create({
-        model: MODEL,
+        model: 'claude-opus-4-8',
         max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
+        messages: [{ role: 'user', content: prompt }],
       })
       const textBlock = response.content.find((b) => b.type === 'text')
       if (textBlock) {
@@ -252,28 +211,19 @@ Return JSON only.`
       console.warn('[AI recommend] AI call failed:', err.message)
     }
 
-    const validIds = new Set((availableComponents || []).map((c) => c.id))
+    const validIds = new Set(allComponents.map((c) => c.id))
     recommendations = recommendations.filter((r) => validIds.has(r.componentId))
     incompatible = incompatible.filter((r) => validIds.has(r.componentId))
 
-    // fallback if AI returns nothing valid
-    if (recommendations.length === 0 && (availableComponents || []).length > 0) {
+    if (recommendations.length === 0 && allComponents.length > 0) {
       console.warn('[AI recommend] Fallback triggered for', selectingCategory)
-      const pool = (filteredComponents.length > 0 ? filteredComponents : availableComponents)
-        .filter((c) => validIds.has(c.id))
-      let fallback = null
-      if (finalMax != null && finalMax > 0) {
-        const sorted = [...pool].sort((a, b) => b.price - a.price)
-        fallback = sorted.find((c) => c.price <= finalMax)
-      }
-      if (!fallback && remainingBudget != null) {
-        const sorted = [...pool].sort((a, b) => b.price - a.price)
-        fallback = sorted.find((c) => c.price <= remainingBudget * 0.7)
-      }
-      if (!fallback) fallback = [...pool].sort((a, b) => a.price - b.price)[0]
-      if (fallback) {
-        recommendations = [{ componentId: fallback.id, priority: 1, reason: 'Best available option within your budget constraints' }]
-      }
+      const affordable = sortedComponents.filter((c) => remainingBudget <= 0 || (c.price || 0) <= remainingBudget)
+      const pool = affordable.length > 0 ? affordable : sortedComponents
+      recommendations = pool.slice(0, 3).map((c, i) => ({
+        componentId: c.id,
+        priority: i + 1,
+        reason: 'Best available option based on use case and budget',
+      }))
     }
 
     res.json({ recommendations, incompatible })
@@ -593,4 +543,158 @@ Rules:
   }
 }
 
-module.exports = { chat, recommend, ramRecommendation, performancePredict, benchmark, generateDescription, generateUseCases, rateComponent }
+const TEMPLATE_META = {
+  budget_gaming: { name: 'Budget Gaming', purpose: 'Gaming' },
+  stream_setup: { name: 'Stream Setup', purpose: 'Gaming & Streaming' },
+  '3d_rendering': { name: '3D Rendering', purpose: '3D Rendering' },
+  no_limits: { name: 'No Limits', purpose: 'Enthusiast / No limits' },
+}
+
+function tplNum(v) {
+  const m = String(v ?? '').match(/(\d+(?:\.\d+)?)/)
+  return m ? parseFloat(m[1]) : 0
+}
+
+function tplSizeGB(v) {
+  const s = String(v ?? '')
+  const n = tplNum(s)
+  return /tb/i.test(s) ? n * 1024 : n
+}
+
+const tplCores = (c) => tplNum(c.specData?.cores)
+const tplVram = (c) => tplSizeGB(c.specData?.memorySize)
+const tplPower = (c) => tplNum(c.specData?.power)
+const tplRamType = (c) => c.specData?.memoryType || ''
+const tplFormFactor = (c) => c.specData?.formFactor || ''
+const tplIsNVMe = (c) => /nvme/i.test(c.specData?.memoryType || '') || /nvme/i.test(c.name || '')
+
+const tplByPriceAsc = (a, b) => a.price - b.price
+const tplByPriceDesc = (a, b) => b.price - a.price
+const tplByCoresDesc = (a, b) => tplCores(b) - tplCores(a) || b.price - a.price
+const tplByVramDesc = (a, b) => tplVram(b) - tplVram(a) || b.price - a.price
+const tplBySpeedDesc = (a, b) => tplNum(b.specData?.memoryClock) - tplNum(a.specData?.memoryClock) || b.price - a.price
+
+function tplPick(list, { filter, sort, priceMax } = {}) {
+  const pool = list || []
+  let f = filter ? pool.filter(filter) : pool.slice()
+  if (priceMax) {
+    const capped = f.filter((c) => c.price <= priceMax)
+    if (capped.length) f = capped
+  }
+  if (f.length === 0) f = pool.slice()
+  if (sort) f.sort(sort)
+  return f[0] || null
+}
+
+function tplSelectBuild(type, byCat) {
+  const cpus = byCat.CPU || []
+  const mobos = byCat.MOTHERBOARD || []
+  const gpus = byCat.GPU || []
+  const rams = byCat.RAM || []
+  const storages = byCat.STORAGE || []
+  const psus = byCat.PSU || []
+  const cases = byCat.CASE || []
+  const coolers = byCat.COOLING || []
+  const fans = byCat.FAN || []
+
+  const result = {}
+
+  if (type === 'budget_gaming') {
+    result.CPU = tplPick(cpus, { filter: (c) => tplCores(c) >= 6, priceMax: 70000, sort: tplByPriceAsc })
+    result.GPU = tplPick(gpus, { filter: (c) => tplVram(c) >= 8, priceMax: 100000, sort: tplByPriceDesc })
+    result.RAM = tplPick(rams, { filter: (c) => tplSizeGB(c.specData?.memorySize) >= 16, priceMax: 25000, sort: tplByPriceAsc })
+    result.STORAGE = tplPick(storages, { filter: tplIsNVMe, priceMax: 20000, sort: tplByPriceAsc })
+    result.PSU = tplPick(psus, { filter: (c) => tplPower(c) >= 550 && tplPower(c) <= 650, priceMax: 25000, sort: tplByPriceAsc })
+    result.CASE = tplPick(cases, { filter: (c) => /atx|micro/i.test(tplFormFactor(c)), priceMax: 20000, sort: tplByPriceAsc })
+    result.COOLING = tplPick(coolers, { filter: (c) => !c.specData?.waterCooling, priceMax: 15000, sort: tplByPriceAsc })
+    result.FAN = tplPick(fans, { sort: tplByPriceAsc })
+  } else if (type === 'stream_setup') {
+    result.CPU = tplPick(cpus, { filter: (c) => tplCores(c) >= 8 && !/x3d/i.test(c.name), priceMax: 120000, sort: tplByPriceAsc })
+    result.GPU = tplPick(gpus, { filter: (c) => tplVram(c) >= 8, priceMax: 160000, sort: tplByPriceDesc })
+    result.RAM = tplPick(rams, { filter: (c) => tplSizeGB(c.specData?.memorySize) >= 32, priceMax: 45000, sort: tplByPriceAsc })
+    result.STORAGE = tplPick(storages, { filter: (c) => tplIsNVMe(c) && tplSizeGB(c.specData?.memorySize) >= 1000, priceMax: 40000, sort: tplByPriceAsc })
+    result.PSU = tplPick(psus, { filter: (c) => tplPower(c) >= 650 && tplPower(c) <= 850, priceMax: 45000, sort: tplByPriceAsc })
+    result.CASE = tplPick(cases, { filter: (c) => /atx/i.test(tplFormFactor(c)), priceMax: 40000, sort: tplByPriceAsc })
+    result.COOLING = tplPick(coolers, { priceMax: 35000, sort: tplByPriceDesc })
+    result.FAN = tplPick(fans, { sort: tplByPriceAsc })
+  } else if (type === '3d_rendering') {
+    result.CPU = tplPick(cpus, { filter: (c) => /i9|ryzen 9/i.test(c.name), priceMax: 250000, sort: tplByCoresDesc })
+    result.GPU = tplPick(gpus, { priceMax: 300000, sort: tplByVramDesc })
+    result.RAM = tplPick(rams, { filter: (c) => tplSizeGB(c.specData?.memorySize) >= 64 && /ddr5/i.test(tplRamType(c)), sort: tplByPriceAsc })
+      || tplPick(rams, { filter: (c) => tplSizeGB(c.specData?.memorySize) >= 64, sort: tplByPriceAsc })
+    result.STORAGE = tplPick(storages, { filter: (c) => tplIsNVMe(c) && tplSizeGB(c.specData?.memorySize) >= 1000, sort: tplByPriceAsc })
+    result.PSU = tplPick(psus, { filter: (c) => tplPower(c) >= 850, sort: tplByPriceAsc })
+    result.CASE = tplPick(cases, { sort: tplByPriceDesc })
+    result.COOLING = tplPick(coolers, { sort: tplByPriceDesc })
+    result.FAN = tplPick(fans, { sort: tplByPriceAsc })
+  } else {
+    result.CPU = tplPick(cpus, { sort: tplByPriceDesc })
+    result.GPU = tplPick(gpus, { sort: tplByPriceDesc })
+    result.RAM = tplPick(rams, { filter: (c) => /ddr5/i.test(tplRamType(c)), sort: tplBySpeedDesc })
+      || tplPick(rams, { sort: tplByPriceDesc })
+    result.STORAGE = tplPick(storages, { sort: tplByPriceDesc })
+    result.PSU = tplPick(psus, { sort: tplByPriceDesc })
+    result.CASE = tplPick(cases, { sort: tplByPriceDesc })
+    result.COOLING = tplPick(coolers, { sort: tplByPriceDesc })
+    result.FAN = tplPick(fans, { sort: tplByPriceDesc })
+  }
+
+  const cpuSocket = result.CPU?.specData?.socket
+  const moboPriceMax = type === 'budget_gaming' ? 35000 : type === 'stream_setup' ? 60000 : undefined
+  const moboSort = (type === '3d_rendering' || type === 'no_limits') ? tplByPriceDesc : tplByPriceAsc
+  result.MOTHERBOARD = tplPick(mobos, {
+    filter: (c) => !cpuSocket || (c.specData?.socket || '').toLowerCase() === cpuSocket.toLowerCase(),
+    priceMax: moboPriceMax,
+    sort: moboSort,
+  })
+
+  return result
+}
+
+function tplSlim(c) {
+  if (!c) return null
+  return {
+    id: c.id,
+    name: c.name,
+    price: c.price,
+    category: c.category,
+    specData: c.specData,
+    imageUrl: c.imageUrl || c.images?.[0] || null,
+  }
+}
+
+const getBuildTemplate = async (req, res, next) => {
+  try {
+    const { templateType } = req.body
+    const meta = TEMPLATE_META[templateType]
+    if (!meta) return res.status(400).json({ error: 'Invalid templateType' })
+
+    const inStock = await prisma.component.findMany({ where: { stock: { gt: 0 } } })
+    const byCat = {}
+    for (const c of inStock) {
+      (byCat[c.category] = byCat[c.category] || []).push(c)
+    }
+
+    const selected = tplSelectBuild(templateType, byCat)
+
+    const SLOT_ORDER = ['CPU', 'MOTHERBOARD', 'GPU', 'RAM', 'STORAGE', 'PSU', 'CASE', 'COOLING', 'FAN']
+    const components = {}
+    let totalPrice = 0
+    for (const slot of SLOT_ORDER) {
+      const slim = tplSlim(selected[slot])
+      components[slot] = slim
+      if (slim) totalPrice += slim.price
+    }
+
+    res.json({
+      templateName: meta.name,
+      components,
+      totalPrice,
+      aiContext: { purpose: meta.purpose, budget: { max: Math.round(totalPrice * 1.1) } },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+module.exports = { chat, recommend, ramRecommendation, performancePredict, benchmark, generateDescription, generateUseCases, rateComponent, getBuildTemplate }

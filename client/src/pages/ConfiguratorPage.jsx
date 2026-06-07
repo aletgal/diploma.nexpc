@@ -26,6 +26,11 @@ export default function ConfiguratorPage() {
 
   const [aiContext, setAiContext] = useState(() => {
     try {
+      const buildTemplateRaw = localStorage.getItem('nexpc_build_template')
+      if (buildTemplateRaw) {
+        const t = JSON.parse(buildTemplateRaw)
+        return t.aiContext || null
+      }
       // Template from "Build Like a Pro" section takes priority
       const templateRaw = localStorage.getItem(TEMPLATE_KEY)
       if (templateRaw) {
@@ -46,6 +51,11 @@ export default function ConfiguratorPage() {
 
   const [initialBuild, setInitialBuild] = useState(() => {
     try {
+      const buildTemplateRaw = localStorage.getItem('nexpc_build_template')
+      if (buildTemplateRaw) {
+        const t = JSON.parse(buildTemplateRaw)
+        return t.components || null
+      }
       const raw = localStorage.getItem(LOAD_BUILD_KEY)
       return raw ? JSON.parse(raw) : null
     } catch {
@@ -63,12 +73,8 @@ export default function ConfiguratorPage() {
   })
 
   useEffect(() => {
-    const savedTemplate = localStorage.getItem('nexpc_build_template')
-    if (savedTemplate) {
-      const template = JSON.parse(savedTemplate)
+    if (localStorage.getItem('nexpc_build_template')) {
       localStorage.removeItem('nexpc_build_template')
-      setAiContext(template)
-      setPhase('builder')
     }
 
     // Clean up all one-time flags after mount

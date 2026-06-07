@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { Cpu, Monitor, HardDrive, CircuitBoard, Zap, Box, Wind, MemoryStick, Plus, Trash2, RefreshCw, AlertTriangle, Check } from 'lucide-react'
 import ComponentSelectModal from './ComponentSelectModal'
 import BuildSummary from './BuildSummary'
-import { formatPrice } from '../../utils/formatters'
+import { formatPrice, addSpecSuffix, formatStorageSize } from '../../utils/formatters'
 import api from '../../api/client'
 
 const SLOTS = [
@@ -32,6 +32,12 @@ const CATEGORY_COLORS = {
 const SLOT_BUDGET_WEIGHTS = {
   GPU: 0.35, CPU: 0.20, MOTHERBOARD: 0.10, RAM: 0.10,
   STORAGE: 0.08, PSU: 0.07, CASE: 0.06, COOLING: 0.04, FAN: 0.03,
+}
+
+const FILL_BUTTON_STYLE = {
+  marginTop: 10, padding: '7px 14px', borderRadius: 8, border: '1.5px solid #2563eb',
+  background: '#fff', color: '#2563eb', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'background 0.12s',
 }
 
 const DDR5_CHIPSETS = ['X670', 'X870', 'B650', 'B850', 'Z790', 'B760', 'Z690', 'B760M', 'H770']
@@ -96,15 +102,15 @@ function getShortSpec(component) {
     case 'CPU':         return sd.cores ? `${sd.cores} cores · ${sd.boostClock || sd.baseClock || ''}`.trim().replace(/ ·\s*$/, '') : ''
     case 'GPU':         return sd.memorySize ? `${sd.memorySize} ${sd.memoryType || ''}`.trim() : ''
     case 'RAM': {
-      const kitStr = sd.kitSize && sd.stickSize ? `${sd.kitSize}×${sd.stickSize}GB` : sd.memorySize
-      return kitStr ? `${kitStr} ${sd.memoryType || ''} ${sd.memoryClock || ''}`.trim() : ''
+      const kitStr = sd.kitSize && sd.stickSize ? `${sd.kitSize}×${sd.stickSize}GB` : addSpecSuffix('RAM', 'memorySize', sd.memorySize)
+      return kitStr ? `${kitStr} ${sd.memoryType || ''} ${sd.memoryClock ? addSpecSuffix('RAM', 'memoryClock', sd.memoryClock) : ''}`.trim() : ''
     }
-    case 'STORAGE':     return sd.memorySize ? `${sd.memorySize} ${sd.memoryType || 'NVMe'}`.trim() : ''
+    case 'STORAGE':     return sd.memorySize ? `${formatStorageSize(sd.memorySize)} ${sd.memoryType || 'NVMe'}`.trim() : ''
     case 'MOTHERBOARD': return [sd.socket, sd.chipset, sd.formFactor].filter(Boolean).join(' · ')
-    case 'PSU':         return [sd.power, sd.certificate].filter(Boolean).join(' · ')
+    case 'PSU':         return [sd.power && addSpecSuffix('PSU', 'power', sd.power), sd.certificate].filter(Boolean).join(' · ')
     case 'CASE':        return sd.formFactor || ''
     case 'COOLING':     return sd.waterCooling ? 'AIO Liquid Cooler' : 'Air Cooling'
-    case 'FAN':         return [sd.dimensions, sd.rgb && 'RGB'].filter(Boolean).join(' · ')
+    case 'FAN':         return [sd.dimensions && addSpecSuffix('FAN', 'dimensions', sd.dimensions), sd.rgb && 'RGB'].filter(Boolean).join(' · ')
     default:            return ''
   }
 }
@@ -130,7 +136,7 @@ function getFanAiRec(cpuTdp, budgetMax, buildTotal, maxFans, purpose) {
   return { count: 2, reason: 'Recommend 2 fans for basic low-power build airflow' }
 }
 
-function RamSlotsCard({ motherboard, ramKits, onAddKit, onRemoveKit, aiContext, budgetRemaining }) {
+function RamSlotsCard({ motherboard, ramKits, onAddKit, onRemoveKit, onFillSlots, aiContext, budgetRemaining }) {
   const colors = CATEGORY_COLORS.RAM
   const ramSlots = motherboard?.specData?.ramSlots || 4
   const maxRamSpeed = motherboard?.specData?.maxRamSpeed || ''
@@ -140,6 +146,11 @@ function RamSlotsCard({ motherboard, ramKits, onAddKit, onRemoveKit, aiContext, 
   const dependencyMet = !!motherboard
   const canAddMore = dependencyMet && filledSlots < ramSlots
   const hasKits = ramKits.length > 0
+
+  const lastKit = ramKits[ramKits.length - 1]
+  const fillSticks = lastKit ? (lastKit.component.specData?.sticksInKit || lastKit.sticksUsed || 2) : 0
+  const kitsNeeded = fillSticks > 0 ? Math.floor((ramSlots - filledSlots) / fillSticks) : 0
+  const fillCost = lastKit ? kitsNeeded * lastKit.component.price : 0
 
   const [ramRec, setRamRec] = useState(null)
   const [ramRecLoading, setRamRecLoading] = useState(false)
@@ -269,13 +280,24 @@ function RamSlotsCard({ motherboard, ramKits, onAddKit, onRemoveKit, aiContext, 
           ) : (
             <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>No RAM added yet — click "Add RAM" to get started</p>
           )}
+
+          {hasKits && canAddMore && kitsNeeded >= 1 && (
+            <button
+              onClick={() => onFillSlots(lastKit.component, kitsNeeded)}
+              style={FILL_BUTTON_STYLE}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#eff6ff' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+            >
+              <Plus style={{ width: 14, height: 14 }} /> Fill all slots with same kit (+{kitsNeeded} kit{kitsNeeded !== 1 ? 's' : ''} • +{formatPrice(fillCost)})
+            </button>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function FanPacksCard({ caseComp, fanPacks, maxFans, aiContext, cpuTdp, buildTotal, onAddPack, onRemovePack }) {
+function FanPacksCard({ caseComp, fanPacks, maxFans, aiContext, cpuTdp, buildTotal, onAddPack, onRemovePack, onFillSlots }) {
   const colors = CATEGORY_COLORS.FAN
   const installedFans = fanPacks.reduce((s, p) => s + p.count, 0)
   const dependencyMet = !!caseComp
@@ -284,6 +306,11 @@ function FanPacksCard({ caseComp, fanPacks, maxFans, aiContext, cpuTdp, buildTot
   const budgetMax = aiContext?.budget?.max || null
   const aiRec = getFanAiRec(cpuTdp, budgetMax, buildTotal, maxFans, aiContext?.purpose || aiContext?.useCase)
   const allFull = dependencyMet && installedFans >= maxFans && maxFans > 0
+
+  const lastPack = fanPacks[fanPacks.length - 1]
+  const packSize = lastPack ? (lastPack.count || parseFanPackCount(lastPack.component.name)) : 0
+  const packsNeeded = packSize > 0 ? Math.ceil((maxFans - installedFans) / packSize) : 0
+  const fillCost = lastPack ? packsNeeded * lastPack.component.price : 0
 
   return (
     <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', borderLeft: hasPacks ? `4px solid ${colors.border}` : '1px solid #e5e7eb', marginBottom: 10, padding: '14px 16px' }}>
@@ -377,6 +404,17 @@ function FanPacksCard({ caseComp, fanPacks, maxFans, aiContext, cpuTdp, buildTot
             </div>
           )}
 
+          {hasPacks && canAddMore && packsNeeded >= 1 && (
+            <button
+              onClick={() => onFillSlots(lastPack.component, packsNeeded)}
+              style={FILL_BUTTON_STYLE}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#eff6ff' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+            >
+              <Plus style={{ width: 14, height: 14 }} /> Fill remaining slots with same fan (+{packsNeeded} pack{packsNeeded !== 1 ? 's' : ''} • +{formatPrice(fillCost)})
+            </button>
+          )}
+
           {allFull && (
             <p style={{ fontSize: 12, color: '#059669', fontWeight: 500, marginTop: 8, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Check style={{ width: 12, height: 12 }} /> All fan slots filled
@@ -384,6 +422,37 @@ function FanPacksCard({ caseComp, fanPacks, maxFans, aiContext, cpuTdp, buildTot
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function CoolingHint({ cpuTdp, cooler }) {
+  if (!cpuTdp) return null
+  if (!cooler) {
+    return (
+      <div style={{ margin: '-4px 0 10px', padding: '7px 12px', background: '#eff6ff', borderRadius: 8, fontSize: 12, color: '#1d4ed8', fontWeight: 500 }}>
+        Your CPU TDP is {cpuTdp}W — minimum cooler rating: {cpuTdp}W recommended
+      </div>
+    )
+  }
+  const coolerTdp = parseNum(cooler.specData?.tdp) || 0
+  if (!coolerTdp) return null
+  let style = null
+  let text = null
+  if (coolerTdp >= cpuTdp * 2) {
+    style = { background: '#f0fdf4', color: '#059669' }
+    text = '✓ Excellent cooling headroom'
+  } else if (coolerTdp >= cpuTdp * 1.5) {
+    style = { background: '#f0fdf4', color: '#059669' }
+    text = '✓ Adequate cooling'
+  } else if (coolerTdp < cpuTdp) {
+    style = { background: '#fffbeb', color: '#b45309' }
+    text = `⚠ Cooler TDP (${coolerTdp}W) is below CPU TDP (${cpuTdp}W)`
+  }
+  if (!text) return null
+  return (
+    <div style={{ margin: '-4px 0 10px', padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500, ...style }}>
+      {text}
     </div>
   )
 }
@@ -622,6 +691,16 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
     setHighlightId(null)
   }
 
+  function fillRamSlots(component, count) {
+    const sticksUsed = component.specData?.sticksInKit || 2
+    setRamKits((kits) => [...kits, ...Array.from({ length: count }, () => ({ component, sticksUsed }))])
+  }
+
+  function fillFanSlots(component, count) {
+    const packCount = parseFanPackCount(component.name)
+    setFanPacks((packs) => [...packs, ...Array.from({ length: count }, () => ({ component, count: packCount }))])
+  }
+
   function removeComponent(key) {
     setBuild((b) => ({ ...b, [key]: null }))
     if (key === 'MOTHERBOARD') setRamKits([])
@@ -696,23 +775,26 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
                   ramKits={ramKits}
                   onAddKit={() => openSlot(slot)}
                   onRemoveKit={(idx) => setRamKits((k) => k.filter((_, i) => i !== idx))}
+                  onFillSlots={fillRamSlots}
                   aiContext={aiContext}
                   budgetRemaining={budgetRemaining}
                 />
               )
             }
             return (
-              <SlotCard
-                key={slot.key}
-                slot={slot}
-                component={build[slot.key]}
-                dependencyMet={!slot.requires || !!build[slot.requires]}
-                confirmingRemove={confirmRemove === slot.key}
-                onAdd={() => openSlot(slot)}
-                onRemoveRequest={() => setConfirmRemove(slot.key)}
-                onConfirmRemove={() => removeComponent(slot.key)}
-                onCancelRemove={() => setConfirmRemove(null)}
-              />
+              <Fragment key={slot.key}>
+                <SlotCard
+                  slot={slot}
+                  component={build[slot.key]}
+                  dependencyMet={!slot.requires || !!build[slot.requires]}
+                  confirmingRemove={confirmRemove === slot.key}
+                  onAdd={() => openSlot(slot)}
+                  onRemoveRequest={() => setConfirmRemove(slot.key)}
+                  onConfirmRemove={() => removeComponent(slot.key)}
+                  onCancelRemove={() => setConfirmRemove(null)}
+                />
+                {slot.key === 'COOLING' && <CoolingHint cpuTdp={cpuTdp} cooler={build.COOLING} />}
+              </Fragment>
             )
           })}
 
@@ -725,6 +807,7 @@ export default function ConfiguratorBuilder({ aiContext, initialBuild, preSelect
             buildTotal={buildTotal}
             onAddPack={() => setActiveModal('FAN')}
             onRemovePack={(idx) => setFanPacks((p) => p.filter((_, i) => i !== idx))}
+            onFillSlots={fillFanSlots}
           />
         </div>
 

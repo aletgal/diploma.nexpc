@@ -60,12 +60,16 @@ const SPEC_FIELDS = {
     { key: 'chipset', label: 'Chipset', type: 'text', placeholder: 'e.g. Z790' },
     { key: 'socket', label: 'Socket', type: 'text', placeholder: 'e.g. LGA1700' },
     { key: 'formFactor', label: 'Form Factor', type: 'select', options: ['ATX', 'mATX', 'Mini-ITX'] },
+    { key: 'ramSlots', label: 'RAM Slots', type: 'kitSize', options: [2, 4, 8], default: 4 },
+    { key: 'supportedRamType', label: 'Supported RAM Type', type: 'select', options: ['DDR4', 'DDR5'] },
+    { key: 'maxRamSpeed', label: 'Max RAM Speed (MHz)', type: 'text', placeholder: 'e.g. 6000' },
   ],
   RAM: [
-    { key: 'memoryClock', label: 'Memory Clock', type: 'text', placeholder: 'e.g. 6000 MHz' },
+    { key: 'memoryClock', label: 'Memory Clock', type: 'text', placeholder: 'e.g. 6000' },
     { key: 'memoryType', label: 'Memory Type', type: 'select', options: ['DDR4', 'DDR5'] },
-    { key: 'memorySize', label: 'Memory Size', type: 'text', placeholder: 'e.g. 32GB' },
+    { key: 'memorySize', label: 'Memory Size', type: 'text', placeholder: 'e.g. 32' },
     { key: 'timings', label: 'Timings', type: 'text', placeholder: 'e.g. 30-36-36-96' },
+    { key: 'sticksInKit', label: 'Sticks in Kit', type: 'kitSize', options: [1, 2, 4], default: 2 },
   ],
   CASE: [
     { key: 'formFactor', label: 'Form Factor', type: 'select', options: ['ATX', 'mATX', 'Mini-ITX', 'Full Tower'] },
@@ -73,24 +77,24 @@ const SPEC_FIELDS = {
   ],
   PSU: [
     { key: 'modularity', label: 'Modularity', type: 'select', options: ['Full Modular', 'Semi Modular', 'Non-Modular'] },
-    { key: 'power', label: 'Power', type: 'text', placeholder: 'e.g. 750W' },
+    { key: 'power', label: 'Power', type: 'text', placeholder: 'e.g. 750' },
     { key: 'certificate', label: 'Efficiency Rating', type: 'select', options: ['80+ Bronze', '80+ Silver', '80+ Gold', '80+ Platinum', '80+ Titanium'] },
   ],
   COOLING: [
     { key: 'socket', label: 'Compatible Sockets', type: 'text', placeholder: 'e.g. AM5, LGA1700' },
-    { key: 'tdp', label: 'TDP Support', type: 'text', placeholder: 'e.g. 280W' },
+    { key: 'tdp', label: 'TDP Support', type: 'text', placeholder: 'e.g. 280' },
     { key: 'waterCooling', label: 'Water Cooling (AIO)', type: 'checkbox' },
   ],
   FAN: [
-    { key: 'dimensions', label: 'Dimensions', type: 'text', placeholder: 'e.g. 120mm' },
+    { key: 'dimensions', label: 'Dimensions', type: 'text', placeholder: 'e.g. 120' },
     { key: 'noise', label: 'Noise Level', type: 'text', placeholder: 'e.g. 25dB' },
     { key: 'rgb', label: 'RGB', type: 'checkbox' },
   ],
   STORAGE: [
     { key: 'memoryType', label: 'Type', type: 'select', options: ['NVMe', 'SATA SSD', 'HDD'] },
-    { key: 'memorySize', label: 'Capacity', type: 'text', placeholder: 'e.g. 2TB' },
-    { key: 'readSpeed', label: 'Read Speed', type: 'text', placeholder: 'e.g. 7300 MB/s' },
-    { key: 'writeSpeed', label: 'Write Speed', type: 'text', placeholder: 'e.g. 6900 MB/s' },
+    { key: 'memorySize', label: 'Capacity', type: 'text', placeholder: 'e.g. 1000' },
+    { key: 'readSpeed', label: 'Read Speed', type: 'text', placeholder: 'e.g. 7300' },
+    { key: 'writeSpeed', label: 'Write Speed', type: 'text', placeholder: 'e.g. 6900' },
   ],
 }
 
@@ -130,6 +134,30 @@ function SpecField({ field, value, onChange }) {
           className="w-4 h-4 rounded accent-primary-600"
         />
         <label htmlFor={field.key} className="text-sm text-gray-700 cursor-pointer">{field.label}</label>
+      </div>
+    )
+  }
+  if (field.type === 'kitSize') {
+    const current = value ?? field.default
+    return (
+      <div>
+        <label className="label">{field.label}</label>
+        <div className="flex gap-2">
+          {field.options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onChange(field.key, opt)}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                current === opt
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
       </div>
     )
   }
@@ -219,7 +247,11 @@ function ComponentModal({ open, onClose, editTarget, onSuccess }) {
 
   function handleCategorySelect(cat) {
     setCategory(cat)
-    setSpecData({})
+    const defaults = {}
+    for (const field of SPEC_FIELDS[cat] ?? []) {
+      if (field.default !== undefined) defaults[field.key] = field.default
+    }
+    setSpecData(defaults)
     setStep(2)
   }
 

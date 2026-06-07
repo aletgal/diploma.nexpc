@@ -60,7 +60,7 @@ function CompareBar() {
   )
 }
 
-const PRICE_MAX = 2_000_000
+const PRICE_MAX = 20_000_000
 const PRICE_STEP = 1_000
 
 const SORT_OPTIONS = [

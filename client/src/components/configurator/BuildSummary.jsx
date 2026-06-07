@@ -269,11 +269,13 @@ export default function BuildSummary({ build, ramKits = [], fanPacks = [], slots
         </div>
 
         {(() => {
-          const budgetMax = aiContext?.budget?.max
-          if (!budgetMax) return null
+          const rawMax = aiContext?.budget?.max
+          if (!rawMax) return null
+          const isUnlimited = rawMax >= 2000000
+          const budgetMax = rawMax
           const pct = Math.min(100, (total / budgetMax) * 100)
-          const over = total > budgetMax
-          const barColor = over ? '#9333ea' : pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#22c55e'
+          const over = !isUnlimited && total > budgetMax
+          const barColor = isUnlimited ? '#22c55e' : over ? '#9333ea' : pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#22c55e'
           const remaining = budgetMax - total
           return (
             <div style={{ marginBottom: 16 }}>
